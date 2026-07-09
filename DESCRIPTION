@@ -1,0 +1,27 @@
+Package: xrdbi
+Title: 'DBI' Backend for 'xarray' via a Live 'reticulate' Session
+Version: 0.0.1.9000
+Authors@R:
+    person("Michael", "Sumner", email = "mdsumner@gmail.com",
+           role = c("aut", "cre"))
+Description: Treats a live Python session holding an 'xarray' object as a
+    database connection. Tables are data variables, fields are dimensions
+    and coordinates, queries are Python expressions (or compiled from a
+    small structured spec) evaluated lazily against the dataset, and
+    fetching renders the tidy long-form data frame. The array is a
+    rendering format; this package is one veneer over it.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+Depends:
+    R (>= 4.1.0)
+Imports:
+    DBI (>= 1.2.0),
+    methods,
+    reticulate (>= 1.35.0)
+Suggests:
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
+URL: https://github.com/mdsumner/xrdbi
+BugReports: https://github.com/mdsumner/xrdbi/issues
+Config/roxygen2/version: 8.0.0
