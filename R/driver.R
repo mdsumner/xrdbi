@@ -92,6 +92,10 @@ setMethod("dbConnect", "XarrayDriver",
     reticulate::py_run_string(xrdbi_render_py)
     ptr$render <- reticulate::py_eval("_xrdbi_render", convert = FALSE)
 
+    ## in dbConnect, next to the render handle:
+    reticulate::py_run_string(xrdbi_hint_py)
+    ptr$hint <- reticulate::py_eval("_xrdbi_empty_hint", convert = FALSE)
+
     new("XarrayConnection",
         ptr = ptr,
         dsn = if (is.null(dsn)) NA_character_ else dsn)

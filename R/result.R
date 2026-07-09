@@ -49,28 +49,27 @@ setMethod("dbGetStatement", "XarrayResult", function(res, ...) {
 })
 
 render_result <- function(res, max_cells, force) {
-
-
   ptr <- res@ptr
   if (!is.null(ptr$df)) return(invisible(NULL))
   xr <- conn_xr(ptr$conn)
   bt <- import_builtins(convert = FALSE)
   obj <- ptr$obj
   is_xr <- py_to_r(bt$isinstance(obj, xr$DataArray)) ||
-           py_to_r(bt$isinstance(obj, xr$Dataset))
-  if (is_xr) {
-    guard_cells(obj, max_cells, force)
-    ptr$df <- obj$to_dataframe()$reset_index()
-  } else {
-    ## scalar or other python value: render as a one-cell frame
-    pd <- import("pandas", convert = FALSE)
-    ptr$df <- pd$DataFrame(list(value = list(obj)))
+    py_to_r(bt$isinstance(obj, xr$Dataset))
+  if (is_xr) guard_cells(obj, max_cells, force)
 
-  }
+  ## everything renders through the python helper: Dataset, DataArray
+  ## (incl. 0-d and dim coords), and plain python scalars
+  ptr$df <- ptr$conn@ptr$render(obj)
   ptr$nrow <- py_to_r(bt$len(ptr$df))
+
+  if (is_xr && identical(ptr$nrow, 0L)) {
+    h <- tryCatch(py_to_r(ptr$conn@ptr$hint(obj, conn_ds(ptr$conn))),
+                  error = function(e) NULL)
+    if (!is.null(h) && is.character(h)) message("xrdbi: ", h)
+  }
   invisible(NULL)
 }
-
 #' @export
 setMethod("dbFetch", "XarrayResult",
   function(res, n = -1, ...,

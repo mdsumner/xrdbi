@@ -36,7 +36,7 @@ xrdbi_render_py <- paste(
   "    if isinstance(obj, xr.DataArray):",
   "        name = obj.name if obj.name is not None else 'value'",
   "        if obj.ndim == 0:",
-  "            return pd.DataFrame({name: [obj.item()]})",
+  "            return pd.DataFrame({name: [obj.values[()]]})",
   "        if name in obj.dims:",
   "            return pd.DataFrame({name: np.asarray(obj)})",
   "        if name in obj.coords:",
@@ -44,3 +44,32 @@ xrdbi_render_py <- paste(
   "        return obj.to_dataframe().reset_index()",
   "    return pd.DataFrame({'value': [obj]})",
   sep = "\n")
+
+
+xrdbi_hint_py <- paste(
+  "def _xrdbi_empty_hint(obj, ds):",
+  "    import xarray as xr",
+  "    if not isinstance(obj, (xr.Dataset, xr.DataArray)):",
+  "        return None",
+  "    msgs = []",
+  "    for dim, size in obj.sizes.items():",
+  "        if size != 0:",
+  "            continue",
+  "        if dim in ds.indexes:",
+  "            idx = ds.indexes[dim]",
+  "            lo, hi = idx[0], idx[-1]",
+  "            if idx.is_monotonic_decreasing:",
+  "                msgs.append(",
+  "                    \"'%s' selected nothing: this coordinate is DESCENDING \"",
+  "                    \"(%s .. %s) and label slices follow coordinate order; \"",
+  "                    \"try slice(hi, lo)\" % (dim, lo, hi))",
+  "            else:",
+  "                msgs.append(",
+  "                    \"'%s' selected nothing (coordinate spans %s .. %s)\"",
+  "                    % (dim, lo, hi))",
+  "        else:",
+  "            msgs.append(\"'%s' selected nothing\" % dim)",
+  "    return '; '.join(msgs) if msgs else None",
+  sep = "\n")
+
+

@@ -11,28 +11,29 @@ object.
   bytes); the tidy long-form data frame is rendered at `dbFetch()`
 - everything else is one step away via `xr_dataset(con)`
 
-Pixel-level rows, on demand, from anything xarray can open: this is a
-backend a pixel value getter could sit on. The chunk-level relation (byte
+This provides pixel-level rows on demand from anything xarray can open. 
+The chunk-level relation (byte
 ranges, encoded blobs) is deliberately a different project; see the
 dbi-for-xarray design note (gdal-r-python/dbi-xarray).
 
 ## Status
 
-Design spike. Not on CRAN. Runs anywhere reticulate can see a Python
+Should run anywhere reticulate can see a Python
 environment with xarray plus the relevant IO engines (h5netcdf, zarr,
-gcsfs, s3fs, ...); the gdal-r-python image is the reference environment.
+gcsfs, s3fs,gcsfs, ...); the gdal-r-python image is the reference environment.
 
 ## Example: OISST NetCDF over HTTPS
 
 ```r
-reticulate::use_python("/usr/bin/python3")
+## however you do it: https://rstudio.github.io/reticulate/reference/py_require.html
+##reticulate::use_python("/usr/bin/python3")
 library(DBI)
 library(xrdbi)
 
 eg <- "https://www.ncei.noaa.gov/data/sea-surface-temperature-optimum-interpolation/v2.1/access/avhrr/198109/oisst-avhrr-v02r01.19810901.nc"
 con <- dbConnect(xarray(),
                  eg,
-                 engine = "h5netcdf", chunks = reticulate::dict())
+                 engine = "h5netcdf")  ## chunks = None by default, not reticulate::dict()
 
 dbListTables(con)
 #> [1] "anom" "err"  "ice"  "sst"  ...
@@ -51,9 +52,25 @@ dbGetQuery(con, "ds.sst.sel(lat=slice(-56, -55), lon=slice(100, 101)).isel(time=
 dbDisconnect(con)
 ```
 
-Note `chunks = reticulate::dict()` is Python `chunks={}` (lazy open,
-storage-aligned chunks). An empty R `list()` converts to a Python list,
-which is not what you want here.
+Note on `chunks`: omitting it (Python `chunks=None` for `open_dataset`)
+gives lazy zarr-backed arrays and a fast connection. Passing
+`chunks = reticulate::dict()` (Python `chunks={}`) wraps every variable
+in dask at native storage chunking; for finely-chunked stores this can
+cost minutes of task-graph construction at connect time (the ARCO ERA5
+store above is 1 timestep per chunk, times 277 variables). Selection via
+`sel`/`isel` is lazy either way and reads only the chunks a slab
+touches, so prefer no dask for extraction, and opt in per statement for
+reductions, rechunking to something sane:
+
+```
+    dbGetQuery(con,
+      "ds['2m_temperature'].chunk({'time': 744}).sel(latitude=slice(19, 18), longitude=slice(73, 74)).mean('time')")
+```
+
+Beware that the default differs by open function: `open_dataset` defaults
+to `chunks=None` (no dask), `open_zarr` defaults to `chunks='auto'`
+(dask). If you connect with `open = "open_zarr"`, pass `chunks =
+reticulate::py_none()` explicitly to get the fast path.
 
 ## Example: ARCO ERA5 (zarr v3, anonymous GCS)
 
@@ -122,6 +139,62 @@ dbGetQuery(con,
 
 Longitude here is 0..360 ascending, so `slice(73, 74)` is fine as-is.
 A quoted date string on `time` selects the whole day.
+
+## Example: OISST daily mosaic via GDAL multidim VRT (gdalxarray engine)
+
+Requires the gdalxarray Python package. The dsn is a GDAL multidim VRT
+mosaic over the full OISST daily record, published by a scheduled
+pipeline; xarray opens it through the gdalxarray backend, so every GDAL
+virtual filesystem and format is in reach of the same DBI surface.
+
+```r
+dsn <- "/vsicurl/https://projects.pawsey.org.au/aad-index/oisst/oisst-mdim.vrt"
+
+Sys.setenv(AWS_NO_SIGN_REQUEST = "YES")
+system.time({
+  con <- dbConnect(xarray(), dsn, engine = "gdalxarray")
+})
+#>    user  system elapsed
+#>   9.261   0.386   5.569
+
+con
+#> <XarrayConnection>
+#>   dsn: /vsicurl/https://projects.pawsey.org.au/aad-index/oisst/oisst-mdim.vrt
+#>   dims: time: 16379, zlev: 1, lat: 720, lon: 1440
+#>   vars: anom, err, ice, sst
+
+## the most recent day in the record (a 0-d scalar renders as one row)
+dbGetQuery(con, "ds.time.isel(time=-1)")
+#>                  time
+#> 1 2026-07-06 12:00:00
+
+## one day of SST as tidy rows
+dbGetQuery(con, "ds.sst.isel(time=-1)") |> str()
+#> 'data.frame':  1036800 obs. of  5 variables:
+#>  $ zlev: num  0 0 0 0 ...
+#>  $ lat : num  -89.9 -89.9 ...
+#>  $ lon : num  0.125 0.375 ...
+#>  $ time: POSIXct, format: "2026-07-06 12:00:00" ...
+#>  $ sst : num  NaN NaN ...
+```
+
+Two lessons this dsn teaches:
+
+Laziness defers failure as well as work. The VRT itself is public over
+`/vsicurl`, but its sources are `/vsis3` paths into the NOAA bucket, so
+a missing `AWS_NO_SIGN_REQUEST` errors at the first query, not at
+connect (connect reads only the VRT metadata). GDAL reads configuration
+from the process environment at access time, so `Sys.setenv()` works
+even after the Python session is up; setting it before connecting is
+still the tidy habit.
+
+A connection is a snapshot. The pipeline behind this VRT publishes a
+new day on schedule (it did so mid-session while writing this example:
+a held connection kept answering with the previous day, a fresh connect
+saw the new one). The rolling `oisst-mdim.vrt` always means "latest";
+pin a dated sibling (`oisst-mdim-YYYYMMDD.vrt`) when you need a
+reproducible record. Icechunk makes this distinction first-class: a
+readonly session at a snapshot is an AS OF query.
 
 ## Connect forms
 
