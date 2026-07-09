@@ -1,6 +1,6 @@
 Package: xrdbi
 Title: 'DBI' Backend for 'xarray' via a Live 'reticulate' Session
-Version: 0.0.1.9000
+Version: 0.0.1.9002
 Authors@R:
     person("Michael", "Sumner", email = "mdsumner@gmail.com",
            role = c("aut", "cre"))

@@ -73,6 +73,7 @@ setMethod("dbConnect", "XarrayDriver",
     xr <- import("xarray", convert = FALSE)
 
     ds <- if (!is.null(dsn)) {
+      dsn <- path.expand(dsn)
       stopifnot(is.character(dsn), length(dsn) == 1L)
       opener <- xr[[open]]
       kwargs <- lapply(list(...), r_to_py)

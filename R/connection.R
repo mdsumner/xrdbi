@@ -123,7 +123,7 @@ setMethod("dbReadTable", signature("XarrayConnection", "character"),
     }
     v <- py_get_item(ds, name)
     guard_cells(v, max_cells, force)
-    render_dataframe(v)
+    render_dataframe(conn, v)
   })
 
 ## transactions: reserved for icechunk session/commit semantics

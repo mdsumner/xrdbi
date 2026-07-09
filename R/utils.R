@@ -14,8 +14,8 @@ guard_cells <- function(obj, max_cells, force) {
 }
 
 ## the rendering: tidy long form, one row per cell
-render_dataframe <- function(obj) {
-  df <- obj$to_dataframe()$reset_index()
+render_dataframe <- function(conn, obj) {
+  df <- conn@ptr$render(obj)
   out <- py_to_r(df)
   rownames(out) <- NULL
   out
@@ -31,6 +31,21 @@ py_repr_string <- function(x) {
 xrdbi_render_py <- paste(
   "def _xrdbi_render(obj):",
   "    import xarray as xr, pandas as pd, numpy as np",
+  "    if isinstance(obj, (xr.Dataset, xr.DataArray)):",
+  "        if 0 in dict(obj.sizes).values():",
+  "            # empty selection: frame from metadata, read no bytes",
+  "            # (some backends, e.g. GDAL mdim, reject zero-count reads)",
+  "            if isinstance(obj, xr.DataArray):",
+  "                name = obj.name if obj.name is not None else 'value'",
+  "                cols = [*obj.dims,",
+  "                        *(c for c in obj.coords",
+  "                          if c not in obj.dims and c != name),",
+  "                        name]",
+  "            else:",
+  "                cols = [*obj.dims,",
+  "                        *(c for c in obj.coords if c not in obj.dims),",
+  "                        *obj.data_vars]",
+  "            return pd.DataFrame(columns=list(dict.fromkeys(cols)))",
   "    if isinstance(obj, xr.Dataset):",
   "        return obj.to_dataframe().reset_index()",
   "    if isinstance(obj, xr.DataArray):",
@@ -44,7 +59,6 @@ xrdbi_render_py <- paste(
   "        return obj.to_dataframe().reset_index()",
   "    return pd.DataFrame({'value': [obj]})",
   sep = "\n")
-
 
 xrdbi_hint_py <- paste(
   "def _xrdbi_empty_hint(obj, ds):",
