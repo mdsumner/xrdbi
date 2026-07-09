@@ -89,6 +89,7 @@ setMethod("dbFetch", "XarrayResult",
     out <- py_to_r(chunk)
     ## pandas index comes along as rownames; drop for DBI cleanliness
     rownames(out) <- NULL
+    attr(out, "pandas.index") <- NULL
     out
   })
 
