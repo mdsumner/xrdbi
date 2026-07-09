@@ -80,7 +80,7 @@ Requires the gcsfs Python package.
 era <- "gs://gcp-public-data-arco-era5/ar/full_37-1h-0p25deg-chunk-1.zarr-v3"
 con <- dbConnect(xarray(),
                  era,
-                 engine = "zarr", chunks = reticulate::dict(),
+                 engine = "zarr", 
                  storage_options = reticulate::dict(token = "anon"))
 
 con
@@ -140,6 +140,21 @@ dbGetQuery(con,
 Longitude here is 0..360 ascending, so `slice(73, 74)` is fine as-is.
 A quoted date string on `time` selects the whole day.
 
+dplyr verbs work as expected. 
+
+```R
+ tbl(con, "100m_u_component_of_wind") |>
++        filter(latitude > 18, latitude < 19, longitude >= 73, longitude <= 74) |> 
++   filter(time >= as.Date("1980-01-01"), time <= as.Date("1980-01-31")) |> 
++   collect()
+                   time latitude longitude 100m_u_component_of_wind
+1   1980-01-01 00:00:00    18.75     73.00              -0.28514814
+2   1980-01-01 00:00:00    18.75     73.25              -0.03599060
+3   1980-01-01 00:00:00    18.75     73.50               1.04847205
+4   1980-01-01 00:00:00    18.75     73.75               2.79078245
+5   1980-01-01 00:00:00    18.75     74.00               3.94336033
+...
+```
 ## Example: OISST daily mosaic via GDAL multidim VRT (gdalxarray engine)
 
 Requires the gdalxarray Python package. The dsn is a GDAL multidim VRT

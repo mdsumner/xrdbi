@@ -1,6 +1,6 @@
 Package: xrdbi
 Title: 'DBI' Backend for 'xarray' via a Live 'reticulate' Session
-Version: 0.0.1.9002
+Version: 0.0.1.9003
 Authors@R:
     person("Michael", "Sumner", email = "mdsumner@gmail.com",
            role = c("aut", "cre"))
@@ -17,8 +17,11 @@ Depends:
     R (>= 4.1.0)
 Imports:
     DBI (>= 1.2.0),
+    dplyr,
     methods,
-    reticulate (>= 1.35.0)
+    reticulate (>= 1.35.0),
+    rlang, 
+    utils
 Suggests:
     testthat (>= 3.0.0)
 Config/testthat/edition: 3

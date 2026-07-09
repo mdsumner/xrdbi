@@ -6,6 +6,19 @@ import(DBI)
 importFrom(reticulate, import, import_builtins, py_to_r, r_to_py,
            py_get_item, py_dict, dict, py_module_available, py_is_null_xptr)
 
+importFrom(rlang, enquos, ensyms, is_call, is_symbol, as_string,
+           quo_get_expr, quo_get_env)
+importFrom(dplyr, tbl, filter, select, collect, show_query)
+
+S3method(tbl, XarrayConnection)
+S3method(filter, tbl_xarray)
+S3method(select, tbl_xarray)
+S3method(collect, tbl_xarray)
+S3method(show_query, tbl_xarray)
+S3method(head, tbl_xarray)
+S3method(print, tbl_xarray)
+S3method(as.data.frame, tbl_xarray)
+
 export(xarray)
 export(xr_query)
 export(xr_dataset)

@@ -57,6 +57,8 @@ xrdbi_render_py <- paste(
   "        if name in obj.coords:",
   "            obj = obj.drop_vars(name)",
   "        return obj.to_dataframe().reset_index()",
+  "    if isinstance(obj, pd.DataFrame):",
+  "        return obj",
   "    return pd.DataFrame({'value': [obj]})",
   sep = "\n")
 

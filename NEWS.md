@@ -1,9 +1,24 @@
 # xrdbi 0.0.1.9000 (development)
 
-Initial spike of a DBI backend for xarray: the "database" is a live
+
+
+Initial  DBI backend for xarray: the "database" is a live
 Python session (reticulate) holding an xarray object.
 
 ## Features
+
+* `dplyr` verbs over any xarray-openable source; dimension filters push down to
+oriented label slices, value filters apply before conversion; one inspectable
+python statement. `tbl(con, var)` returns a lazy spec; filter/select/head accumulate;
+`collect()` compiles ONE python statement and runs it through
+`dbGetQuery`. Dimension predicates push down to an inclusive `.sel` hull
+(fewer chunks touched); strict bounds and data-variable predicates
+remain as a pandas `.query` applied before conversion to R (pushdown
+with residuals). At collect, each hull dimension is probed for
+direction and the slice oriented to match, so range filters work
+identically on ascending and descending coordinates. `show_query()` prints the
+compiled python.
+
 
 * Three connect forms via `dbConnect(xarray(), ...)`: a `dsn` string
   that xarray can open (open function selectable via `open =`, keyword
