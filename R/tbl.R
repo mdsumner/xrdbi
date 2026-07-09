@@ -83,8 +83,8 @@ head.tbl_xarray <- function(x, n = 6L, ...) {
   x
 }
 
-#' @export
-collect.tbl_xarray <- function(x, ...) {
+
+collect_impl <- function(x, ...) {
   con <- x$con
   if (is.null(con)) stop("no connection on this tbl", call. = FALSE)
   dims <- tbl_dims(con, x$var)
@@ -105,6 +105,14 @@ collect.tbl_xarray <- function(x, ...) {
       format(n, big.mark = ",")), call. = FALSE)
   }
   dbGetQuery(con, statement)
+}
+
+#' @export
+as.data.frame.tbl_xarray <- function(x, ...) collect_impl(x, ...)
+
+#' @export
+collect.tbl_xarray <- function(x, ...) {
+  dplyr::as_tibble(collect_impl(x, ...))
 }
 
 #' @export
