@@ -17,7 +17,10 @@ setMethod("dbSendQuery", signature("XarrayConnection", "character"),
     ds <- conn_ds(conn)
     xr <- conn_xr(conn)
     bt <- import_builtins(convert = FALSE)
-    scope <- py_dict(c("ds", "xr"), list(ds, xr), convert = FALSE)
+    scope <- py_dict(c("ds", "xr", "_xrdbi_render"),
+                     list(ds, xr, conn@ptr$render), convert = FALSE)
+
+
     obj <- bt$eval(statement, scope)
 
     ptr <- new.env(parent = emptyenv())

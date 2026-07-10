@@ -125,14 +125,66 @@ show_query.tbl_xarray <- function(x, ...) {
   invisible(x)
 }
 
+
 #' @export
-print.tbl_xarray <- function(x, ...) {
+print.tbl_xarray <- function(x, ..., n = getOption("xrdbi.print_n", 6L)) {
   cat("<tbl_xarray> ", x$var, "\n", sep = "")
   cat("  python: ", tbl_statement(x), "\n", sep = "")
-  cat("  (lazy; collect() to render)\n")
+  ok <- FALSE
+  if (!is.null(x$con) && isTRUE(x$con@ptr$valid) &&
+      isTRUE(getOption("xrdbi.print_preview", TRUE))) {
+    ok <- tryCatch({
+      pv <- tbl_preview(x, n = n)
+      cat("  sizes : ", pv$sizes_line, "\n", sep = "")
+      print(dplyr::as_tibble(pv$df), n = n)
+      if (nrow(pv$df) == 0L && pv$residual) {
+        cat("# note: value filters removed all previewed cells;",
+            "the full result may still have rows\n")
+      }
+      TRUE
+    }, error = function(e) FALSE)
+  }
+  if (ok) {
+    cat("# lazy preview of the first cells (reads at most one chunk);",
+        "collect() for the full result\n")
+  } else {
+    cat("  (lazy; collect() to render)\n")
+  }
   invisible(x)
 }
 
+## a peek that clamps every dimension of the hull before rendering, so
+## the read touches at most the first chunk. This is head() semantics:
+## the first rows of the long-form frame ARE the first-corner cells in
+## C order. Residual filters still apply, so fewer than n rows can
+## survive on a filtered corner.
+tbl_preview <- function(x, n = 6L) {
+  con <- x$con
+  dims <- tbl_dims(con, x$var)
+  hull_dims <- intersect(unique(vapply(x$preds, `[[`, "", "var")), dims)
+  descending <- hull_dims[vapply(hull_dims, dim_is_descending,
+                                 logical(1), con = con)]
+  hull <- compile_tbl(x, dims = dims, descending = descending,
+                      stage = "hull")
+  bt <- import_builtins(convert = FALSE)
+  scope <- py_dict("ds", list(conn_ds(con)), convert = FALSE)
+  sizes <- py_to_r(bt$eval(paste0("dict((", hull, ").sizes)"), scope))
+  sizes_line <- paste(sprintf("%s: %s", names(sizes),
+                              format(unlist(sizes), big.mark = ",")),
+                      collapse = ", ")
+  ## clamp: 1 along every dim, up to n along the last (C-order head)
+  clamp <- setNames(rep(1L, length(sizes)), names(sizes))
+  if (length(sizes)) {
+    last <- length(sizes)
+    clamp[last] <- min(sizes[[last]], as.integer(n))
+  }
+  x2 <- x
+  x2$head_n <- as.integer(n)
+  stmt <- compile_tbl(x2, dims = dims, descending = descending,
+                      clamp = clamp)
+  list(df = dbGetQuery(con, stmt), sizes_line = sizes_line,
+       residual = grepl(".query(", stmt, fixed = TRUE))
+}
 ## compile with a live direction probe when connected, placeholders not
 tbl_statement <- function(x) {
   if (is.null(x$con) || !isTRUE(x$con@ptr$valid)) {
@@ -180,7 +232,7 @@ parse_predicate <- function(ex, env) {
 
 ## ---- compilation (pure: dims and descending are arguments) -----------
 
-compile_tbl <- function(x, dims, descending, stage = "full") {
+compile_tbl <- function(x, dims, descending, stage = "full", clamp = NULL) {
   vars_by <- split(x$preds, vapply(x$preds, `[[`, "", "var"))
   dim_names <- if (is.null(dims)) names(vars_by) else
     intersect(names(vars_by), dims)
@@ -234,11 +286,15 @@ compile_tbl <- function(x, dims, descending, stage = "full") {
     statement <- paste0(statement, ".sel(", paste(sel_args, collapse = ", "),
                         ")")
   }
-
+  if (!is.null(clamp)) {
+    statement <- paste0(statement, ".isel(",
+                        paste(sprintf("%s=slice(0, %d)", names(clamp), as.integer(clamp)),
+                              collapse = ", "), ")")
+  }
   needs_pandas <- stage == "full" &&
     (length(residual) || !is.null(x$cols) || !is.null(x$head_n))
   if (needs_pandas) {
-    statement <- paste0(statement, ".to_dataframe().reset_index()")
+    statement <- paste0(statement, ".pipe(_xrdbi_render)")
     if (length(residual)) {
       statement <- paste0(statement, ".query('",
                           paste(vapply(residual, q_pred, ""),
@@ -246,7 +302,7 @@ compile_tbl <- function(x, dims, descending, stage = "full") {
     }
     if (!is.null(x$cols)) {
       statement <- paste0(statement, "[[",
-        paste(vapply(x$cols, py_repr_string, ""), collapse = ", "), "]]")
+                          paste(vapply(x$cols, py_repr_string, ""), collapse = ", "), "]]")
     }
     if (!is.null(x$head_n)) {
       statement <- paste0(statement, ".head(", x$head_n, ")")
@@ -254,7 +310,6 @@ compile_tbl <- function(x, dims, descending, stage = "full") {
   }
   statement
 }
-
 ## a predicate as pandas query syntax (inner strings double-quoted,
 ## since the query itself is single-quoted in the statement)
 q_pred <- function(p) {

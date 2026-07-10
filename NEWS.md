@@ -4,6 +4,13 @@
 
 ## xr_raster(): raster rendering of a result
 
+* Printing a `tbl` now renders a lazy preview - sizes from metadata, the first cells
+clamped to at most one chunk read, tibble-formatted, with
+`options(xrdbi.print_preview = FALSE)` to opt out; and the compiled pandas stage
+routes through the connection's renderer (`.pipe(_xrdbi_render`), visible in
+`show_query()`), so coordinate tables, 0-d results, and empty selections behave
+identically in tbl pipelines and raw statements.
+
 * New `xr_raster()` renders a slab in gdalraster's in-memory raster
   format: a plain vector of pixel values (left-to-right, top-to-bottom,
   band-sequential; `as_list = TRUE` for a list of band vectors) with a

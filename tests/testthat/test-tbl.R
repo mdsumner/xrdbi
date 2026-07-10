@@ -26,7 +26,7 @@ test_that("descending dims get an oriented slice", {
     compile1(x, dims = c("latitude", "longitude"),
              descending = "latitude"),
     paste0("ds['u'].sel(latitude=slice(19, 18))",
-           ".to_dataframe().reset_index()",
+           ".pipe(_xrdbi_render)",
            ".query('`latitude` > 18 and `latitude` < 19')"))
 })
 
@@ -35,7 +35,7 @@ test_that("strict bounds push the hull and keep a residual", {
   expect_equal(
     compile1(x, dims = c("time", "lat", "lon")),
     paste0("ds['sst'].sel(lat=slice(-80, -70))",
-           ".to_dataframe().reset_index().query('`lat` > -80')"))
+           ".pipe(_xrdbi_render).query('`lat` > -80')"))
 })
 
 test_that("equality and membership are exact pushdowns", {
@@ -52,7 +52,7 @@ test_that("value predicates are residual-only", {
   x <- dplyr::filter(shell(), sst > 10)
   expect_equal(
     compile1(x, dims = c("time", "lat", "lon")),
-    "ds['sst'].to_dataframe().reset_index().query('`sst` > 10')")
+    "ds['sst'].pipe(_xrdbi_render).query('`sst` > 10')")
 })
 
 test_that("dim hull and value residual combine in one statement", {
@@ -60,7 +60,7 @@ test_that("dim hull and value residual combine in one statement", {
   expect_equal(
     compile1(x, dims = c("time", "lat", "lon")),
     paste0("ds['sst'].sel(lat=slice(-80, -70))",
-           ".to_dataframe().reset_index().query('`sst` > 10')"))
+           ".pipe(_xrdbi_render).query('`sst` > 10')"))
 })
 
 test_that("between, reversed comparisons, parentheses, & all parse", {
@@ -81,7 +81,7 @@ test_that("select and head compose python-side", {
   x <- dplyr::select(utils::head(shell(), 7), time, lat, sst)
   expect_equal(
     compile1(x, dims = c("time", "lat", "lon")),
-    paste0("ds['sst'].to_dataframe().reset_index()",
+    paste0("ds['sst'].pipe(_xrdbi_render)",
            "[['time', 'lat', 'sst']].head(7)"))
 })
 
@@ -90,7 +90,7 @@ test_that("odd variable names are backticked in residuals", {
                      `100m_u_component_of_wind` > 10)
   expect_equal(
     compile1(x, dims = c("time", "latitude", "longitude")),
-    paste0("ds['100m_u_component_of_wind'].to_dataframe().reset_index()",
+    paste0("ds['100m_u_component_of_wind'].pipe(_xrdbi_render)",
            ".query('`100m_u_component_of_wind` > 10')"))
 })
 
