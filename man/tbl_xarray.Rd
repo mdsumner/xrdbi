@@ -5,7 +5,7 @@
 \alias{tbl.XarrayConnection}
 \title{A lazy dplyr table over an xarray variable}
 \usage{
-tbl.XarrayConnection(src, from, ...)
+\method{tbl}{XarrayConnection}(src, from, ...)
 }
 \arguments{
 \item{src}{an XarrayConnection}
