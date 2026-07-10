@@ -51,14 +51,17 @@ gdal_autotest_dir <- function() {
   path.expand(d)
 }
 
-gdal_fixture <- function(...) {
+gdal_fixture <- function(name) {
+  f <- system.file("extdata", "autotest", name, package = "xrdbi")
+  if (nzchar(f) && file.exists(f)) return(f)
   d <- gdal_autotest_dir()
-  if (!nzchar(d) || !dir.exists(d)) {
-    skip("GDAL autotest checkout not found (set GDAL_AUTOTEST)")
+  if (nzchar(d) && dir.exists(d)) {
+    for (sub in c("gdrivers/data/netcdf", "gcore/data")) {
+      f <- file.path(d, sub, name)
+      if (file.exists(f)) return(f)
+    }
   }
-  f <- file.path(d, ...)
-  if (!file.exists(f)) skip(paste("fixture not present:", f))
-  f
+  skip(paste("fixture not vendored and no GDAL_AUTOTEST checkout:", name))
 }
 
 ## open a fixture, skipping (not failing) if no netcdf engine can read it

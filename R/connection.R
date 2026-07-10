@@ -46,6 +46,7 @@ setMethod("show", "XarrayConnection", function(object) {
 })
 
 #' @export
+#' @importFrom reticulate py_is_null_xptr
 setMethod("dbIsValid", "XarrayConnection", function(dbObj, ...) {
   isTRUE(dbObj@ptr$valid) && !py_is_null_xptr(dbObj@ptr$ds)
 })
@@ -63,6 +64,7 @@ setMethod("dbDisconnect", "XarrayConnection", function(conn, ...) {
 })
 
 #' @export
+#' @importFrom reticulate import_builtins py_to_r
 setMethod("dbGetInfo", "XarrayConnection", function(dbObj, ...) {
   ds <- conn_ds(dbObj)
   bt <- import_builtins(convert = FALSE)
@@ -87,6 +89,7 @@ setMethod("dbExistsTable", signature("XarrayConnection", "character"),
   })
 
 #' @export
+#' @importFrom reticulate py_get_item
 setMethod("dbListFields", signature("XarrayConnection", "character"),
   function(conn, name, ...) {
     ds <- conn_ds(conn)

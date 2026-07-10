@@ -4,6 +4,7 @@
 #' a live Python session managed by reticulate.
 #'
 #' @export
+#' @importFrom methods new
 #' @examples
 #' \dontrun{
 #' con <- dbConnect(xarray(), "https://example.com/oisst.zarr", open = "open_zarr")
@@ -60,6 +61,7 @@ setMethod("dbDataType", "XarrayDriver", function(dbObj, obj, ...) {
 #' @param builder function taking the xarray module, returning a Dataset
 #' @param object an existing Python xarray object to adopt
 #' @export
+#' @importFrom reticulate import r_to_py
 setMethod("dbConnect", "XarrayDriver",
   function(drv, dsn = NULL, ..., open = "open_dataset",
            builder = NULL, object = NULL) {
@@ -70,7 +72,7 @@ setMethod("dbConnect", "XarrayDriver",
       stop("supply exactly one of 'dsn', 'builder', 'object'", call. = FALSE)
     }
 
-    xr <- import("xarray", convert = FALSE)
+    xr <- reticulate::import("xarray", convert = FALSE)
 
     ds <- if (!is.null(dsn)) {
       dsn <- path.expand(dsn)

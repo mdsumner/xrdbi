@@ -1,0 +1,12 @@
+Fixtures vendored from the GDAL autotest suite
+https://github.com/OSGeo/gdal (MIT/X license)
+source commit: efb2b7be3bc83df3f8a41d2d2a246eca28db4dd8
+vendored: 2026-07-10
+
+files:
+  trmm.nc  <-  gdrivers/data/netcdf/trmm.nc  (8956 bytes)
+  two_vars_scale_offset.nc  <-  gdrivers/data/netcdf/two_vars_scale_offset.nc  (4432 bytes)
+  actual_range_with_order_different_than_latitude.nc  <-  gdrivers/data/netcdf/actual_range_with_order_different_than_latitude.nc  (11180 bytes)
+  rotated_pole.nc  <-  gdrivers/data/netcdf/rotated_pole.nc  (31540 bytes)
+  byte.tif  <-  gcore/data/byte.tif  (736 bytes)
+  rgbsmall.tif  <-  gcore/data/rgbsmall.tif  (5544 bytes)

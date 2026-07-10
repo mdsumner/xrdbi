@@ -8,8 +8,7 @@ Description: Treats a live Python session holding an 'xarray' object as a
     database connection. Tables are data variables, fields are dimensions
     and coordinates, queries are Python expressions (or compiled from a
     small structured spec) evaluated lazily against the dataset, and
-    fetching renders the tidy long-form data frame. The array is a
-    rendering format; this package is one veneer over it.
+    fetching renders to various output types. 
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)

@@ -111,6 +111,7 @@ collect_impl <- function(x, ...) {
 as.data.frame.tbl_xarray <- function(x, ...) collect_impl(x, ...)
 
 #' @export
+#' @importFrom dplyr collect
 collect.tbl_xarray <- function(x, ...) {
   dplyr::as_tibble(collect_impl(x, ...))
 }

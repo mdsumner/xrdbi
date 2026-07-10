@@ -11,6 +11,7 @@ setClass("XarrayResult", contains = "DBIResult",
   slots = list(ptr = "environment", statement = "character"))
 
 #' @export
+#' @importFrom reticulate py_dict
 setMethod("dbSendQuery", signature("XarrayConnection", "character"),
   function(conn, statement, ...) {
     ds <- conn_ds(conn)
@@ -39,6 +40,7 @@ setMethod("show", "XarrayResult", function(object) {
 })
 
 #' @export
+#' @import DBI
 setMethod("dbIsValid", "XarrayResult", function(dbObj, ...) {
   isTRUE(dbObj@ptr$valid)
 })

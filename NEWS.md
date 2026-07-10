@@ -1,3 +1,57 @@
+# xrdbi (dev)
+
+# xrdbi (development)
+
+## xr_raster(): raster rendering of a result
+
+* New `xr_raster()` renders a slab in gdalraster's in-memory raster
+  format: a plain vector of pixel values (left-to-right, top-to-bottom,
+  band-sequential; `as_list = TRUE` for a list of band vectors) with a
+  `gis` attribute carrying `type`, `bbox`, `dim`, `srs`, and
+  `datatype` -- interchangeable with the output of
+  `gdalraster::read_ds()`, and compatible with `ximage::ximage()`. 
+
+* Where `dbFetch()` renders the tidy long-form data frame, this is a
+  sibling rendering on the same lazy result: `xr_raster(res)` on an
+  XarrayResult, or `xr_raster(con, statement)`. The DBI contract is
+  untouched. The array is a rendering format; so is the data frame; so
+  is this.
+
+* Shapes: 2-D (y, x) single band, or 3-D (band, y, x) band-sequential
+  stack (a time series of slabs; dim order preserved, so band b is
+  unambiguously e.g. time[b]). 4-D and higher refuse with an error
+  carrying the explicit flatten recipe (e.g.
+  `.stack(band=('zlev','time')).transpose('band','lat','lon')`),
+  because the gis format has no band-names field and silent flattening
+  would invent an ordering the object cannot record. y and x are
+  positionally the last two dims (CF/xarray convention). Dimension
+  coordinates must be regular ("warp first" otherwise); the half-cell
+  bbox expansion assumes cell centres; ascending or descending order
+  on either axis is handled. The `xrdbi.max_cells` guard applies.
+
+## CRS: lifted
+
+* `gis$srs` is populated by a verbatim lift, in order of specificity:
+  a `spatial_ref`/`crs` coordinate on the object ; the variable's CF `grid_mapping` pointer followed into
+  the parent dataset (grid-mapping variables are 0-d data variables
+  and do not propagate through selection); or conventional names at
+  the dataset level (catching statements that strip attrs, e.g.
+  arithmetic). Only an authored `crs_wkt`/`spatial_ref` WKT string is
+  ever read; CF projection-parameter interpretation is deliberately
+  out of scope. 
+
+## Self-contained test fixtures
+
+* A curated set of GDAL autotest files (four netCDFs exercising CF
+  packing, descending latitude, and grid mappings, plus the canonical
+  byte.tif and 3-band rgbsmall.tif) is vendored flat into
+  `inst/extdata/autotest/` (~100 KB) with a PROVENANCE file recording
+  source paths, commit, and the MIT/X license.
+  `tools/update-fixtures.R` re-vendors from a checkout; the
+  GDAL_AUTOTEST environment variable is now only needed when updating
+  fixtures, never for testing.
+
+
 # xrdbi 0.0.1.9000 (development)
 
 
