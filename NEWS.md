@@ -27,6 +27,19 @@
   pandas render. Datasets, 0-d and empty results, MultiIndex coordinates
   and pandas-stage statements still go through the pandas render.
 
+* `head()` and `select()` in `tbl()` pipelines no longer force a pandas
+  stage unless a filter on data values needs one. They apply in R to the
+  fetched rows, and `head(n)` first narrows the selection to the leading
+  block holding its first `n` rows. `head(10)` on a lazy 207M-cell
+  variable collects in 0.07 s and reads one chunk; before, it tripped the
+  cell guard, and with `force` it rendered the whole selection in pandas.
+  `show_query()` and the printed tbl list the R steps.
+
+* `collect(force = TRUE)` works again for pipelines that compile to a plain
+  xarray selection. `collect()` honoured `force`, but `dbFetch()` checked
+  the guard again without it. The collect guard now counts the cells
+  actually read (strict trims and the `head()` block included).
+
 * Datasets now take the R-built path too, mirroring xarray's
   `to_dataframe()`: rows are every combination of the Dataset's dims, and
   each non-index variable is broadcast across them, whether or not the

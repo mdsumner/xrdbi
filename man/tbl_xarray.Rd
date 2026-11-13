@@ -32,6 +32,10 @@ the result is still an xarray object
 \item predicates on data variables, and mixed forms on one dimension, are
 kept as a pandas \code{.query()} applied Python-side, before conversion
 to R
+\item without such a query, \code{head()} and \code{select()} apply in R to the
+fetched rows, and \code{head(n)} first narrows the selection to the
+leading block that holds its \code{n} rows, so a peek at a huge variable
+reads one corner; \code{\link[dplyr:show_query]{dplyr::show_query()}} lists these R steps
 \item at collect time each hull dimension is asked for its direction,
 and the slice is oriented to match: \code{filter(latitude > 18, latitude < 19)} works identically on ascending and DESCENDING
 coordinates
