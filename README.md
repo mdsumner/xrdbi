@@ -28,11 +28,16 @@ different project; see the dbi-for-xarray design note
 
 ## Status
 
-Should run anywhere reticulate can see a Python environment with xarray
-plus the relevant IO engines (h5netcdf, zarr, gcsfs, s3fs, …); the
-gdal-r-python image is the reference environment. This README is built
-live in that environment: every output below came from the remote data
-when it was last built.
+Loading xrdbi declares its core Python requirements with
+`reticulate::py_require()`: xarray and netCDF4. With no Python
+configured, reticulate provisions them on first use, nothing to install
+by hand. Each example below declares the IO engines it needs the same
+way; with your own Python (`RETICULATE_PYTHON`, a conda environment),
+install those there instead. The gdalxarray engine also needs the GDAL
+Python bindings, which pip cannot install: use conda or an image with
+GDAL. The gdal-r-python image is the reference environment, and this
+README is built live in it: every output below came from the remote data
+when it was last built. See `?xrdbi` for the details.
 
 ## Example: OISST NetCDF over HTTPS
 
@@ -41,6 +46,8 @@ when it was last built.
 ##reticulate::use_python("/usr/bin/python3")
 library(DBI)
 library(xrdbi)
+## netCDF over HTTPS: h5netcdf reads it by byte ranges through fsspec
+reticulate::py_require(c("h5netcdf", "h5py", "fsspec", "aiohttp"))
 
 eg <- "https://www.ncei.noaa.gov/data/sea-surface-temperature-optimum-interpolation/v2.1/access/avhrr/198109/oisst-avhrr-v02r01.19810901.nc"
 con <- dbConnect(xarray(),
@@ -87,9 +94,8 @@ defaults to `chunks=None` (no dask), `open_zarr` defaults to
 
 ## Example: ARCO ERA5 (zarr v3, anonymous GCS)
 
-Requires the gcsfs Python package.
-
 ``` r
+reticulate::py_require(c("zarr", "gcsfs"))
 era <- "gs://gcp-public-data-arco-era5/ar/full_37-1h-0p25deg-chunk-1.zarr-v3"
 con <- dbConnect(xarray(),
                  era,
@@ -236,10 +242,12 @@ after rendering, so `head()` and `select()` then run in pandas too;
 
 ## Example: OISST daily mosaic via GDAL multidim VRT (gdalxarray engine)
 
-Requires the gdalxarray Python package. The dsn is a GDAL multidim VRT
-mosaic over the full OISST daily record, published by a scheduled
-pipeline; xarray opens it through the gdalxarray backend, so every GDAL
-virtual filesystem and format is in reach of the same DBI surface.
+Requires gdalxarray and the GDAL Python bindings (conda-forge `gdal`, or
+an image with GDAL; pip alone cannot provide them). The dsn is a GDAL
+multidim VRT mosaic over the full OISST daily record, published by a
+scheduled pipeline; xarray opens it through the gdalxarray backend, so
+every GDAL virtual filesystem and format is in reach of the same DBI
+surface.
 
 ``` r
 dsn <- "/vsicurl/https://projects.pawsey.org.au/aad-index/oisst/oisst-mdim.vrt"
@@ -249,7 +257,7 @@ system.time({
   con <- dbConnect(xarray(), dsn, engine = "gdalxarray")
 })
 #>    user  system elapsed 
-#>   0.675   0.157   2.499
+#>   0.665   0.158   2.347
 
 con
 #> <XarrayConnection>
@@ -302,7 +310,8 @@ shards of a sharded zarr v3 array, and curvilinear grids get the
 envelope of each chunk’s 2-D longitude/latitude.
 
 A Sentinel-2 true-colour Cloud-Optimized GeoTIFF, one 10980 x 10980 UTM
-tile in 1024 x 1024 blocks:
+tile in 1024 x 1024 blocks, through gdalxarray (so, like the VRT above,
+it needs the GDAL Python bindings):
 
 ``` r
 cog <- "/vsicurl/https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/36/Q/WD/2020/7/S2A_36QWD_20200701_0_L2A/TCI.tif"

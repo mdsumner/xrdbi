@@ -1,6 +1,6 @@
 Package: xrdbi
 Title: 'DBI' Backend for 'xarray' via a Live 'reticulate' Session
-Version: 0.0.1.9016
+Version: 0.0.1.9017
 Authors@R: c(
     person("Michael", "Sumner", email = "mdsumner@gmail.com",
            role = c("aut", "cre")),
@@ -31,12 +31,12 @@ Suggests:
     testthat (>= 3.0.0),
     wk
 Config/testthat/edition: 3
-SystemRequirements: Python (>= 3.11) with the 'xarray', 'pandas' and
-    'numpy' modules, plus IO engines for the data at hand (e.g.
-    'netCDF4', 'h5netcdf', 'zarr', 'gdalxarray'). reticulate provisions
-    the declared modules automatically when no Python is configured;
-    'gdalxarray' also needs the GDAL Python bindings, which pip cannot
-    install.
+SystemRequirements: Python (>= 3.11) with the 'xarray' and 'netCDF4'
+    modules, declared on load with reticulate::py_require() and
+    provisioned automatically when no Python is configured. Other IO
+    engines are declared as needed (e.g. 'zarr', 'h5netcdf'); the
+    'gdalxarray' engine also needs the GDAL Python bindings, which pip
+    cannot install.
 URL: https://github.com/mdsumner/xrdbi
 BugReports: https://github.com/mdsumner/xrdbi/issues
 Config/roxygen2/version: 8.0.0

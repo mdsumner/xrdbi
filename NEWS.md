@@ -45,6 +45,16 @@
 
 ## CRAN preparation
 
+* Loading xrdbi now declares only its core Python requirements, xarray
+  and netCDF4 (local netCDF-3 and netCDF-4). It declared gdalxarray too,
+  which pip can install but not make work (it needs the GDAL Python
+  bindings), so a provisioned environment carried it, its dependencies
+  and an xarray warning for nothing. Other engines are declared where
+  used, e.g. `reticulate::py_require(c("zarr", "gcsfs"))`, before or
+  after connecting; `?xrdbi` lists the common ones, and each README
+  example declares what it needs. A new user, with no Python
+  configured, can run the README's OISST and ERA5 examples as written.
+
 * Tests that need Python skip on CRAN. Checking for the Python modules
   is itself what starts reticulate, which with no Python configured
   provisions an environment from PyPI into the user cache. The tests

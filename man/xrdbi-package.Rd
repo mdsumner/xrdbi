@@ -8,6 +8,31 @@
 \description{
 Treats a live Python session holding an 'xarray' \url{https://xarray.dev} object as a database connection. Tables are variables, fields are dimensions and coordinates, and queries are Python expressions (or compiled from a small structured spec or from 'dplyr' verbs) evaluated lazily against the dataset. Fetching renders the tidy long form, one row per cell, built in R from the values; results can also render as an in-memory raster.
 }
+\section{Python requirements}{
+
+Loading xrdbi declares its core Python requirements with
+\code{\link[reticulate:py_require]{reticulate::py_require()}}: 'xarray' (which brings 'pandas' and
+'numpy') and 'netCDF4', the netCDF engine for local netCDF-3 and
+netCDF-4 files. When no Python is configured, reticulate provisions
+them in a managed environment on first use. Declare the IO engines
+your data needs the same way, before connecting (or after: reticulate
+then switches to an environment that adds them):
+\itemize{
+\item zarr stores: \code{reticulate::py_require("zarr")}, with \code{"gcsfs"} or
+\code{"s3fs"} for cloud buckets
+\item netCDF/HDF5 over HTTPS via h5netcdf:
+\code{reticulate::py_require(c("h5netcdf", "h5py", "fsspec", "aiohttp"))}
+\item vector data cubes: \code{reticulate::py_require(c("xvec", "geopandas"))}
+}
+
+The 'gdalxarray' engine needs the GDAL Python bindings, which pip
+cannot install: use a conda environment (conda-forge \code{gdal}) or an
+image with GDAL, such as \code{ghcr.io/hypertidy/gdal-r-python}. With a
+Python you configure yourself (\code{RETICULATE_PYTHON}, a conda
+environment), install the packages there; reticulate does not
+provision into it.
+}
+
 \seealso{
 Useful links:
 \itemize{
