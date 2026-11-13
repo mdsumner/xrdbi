@@ -14,6 +14,11 @@
   it a dask grid, else one chunk. Only coordinates are read, and a
   `max_chunks` guard covers stores like ERA5 (1.3 million time chunks).
 
+* `xr_chunks(level = "shards")` maps the shards of a sharded zarr v3
+  array, each a stored object holding a grid of inner chunks; at the
+  default chunk level a sharded array gets a `d_shard` column per
+  dimension, the shard each chunk lives in.
+
 ## Query parameters
 
 * `dbSendQuery()`, `dbGetQuery()` and `xr_raster()` take `params`, a named

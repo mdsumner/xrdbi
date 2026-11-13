@@ -140,3 +140,47 @@ test_that("GDAL blocks via gdalxarray: same bbox and CRS as xr_raster", {
   expect_equal(unname(unlist(wk::wk_bbox(wk::wk_envelope(whole$geometry)))[1:4]),
                attr(r, "gis")$bbox)
 })
+
+test_that("zarr v3 shards: the shard grid, and the shard of each chunk", {
+  skip_if_no_xarray()
+  skip_if_not(reticulate::py_module_available("zarr"), "python zarr not available")
+  zv <- reticulate::py_to_r(reticulate::import("zarr")$`__version__`)
+  skip_if(package_version(sub("[^0-9.].*$", "", zv)) < "3.0", "zarr < 3 has no shards")
+  path <- file.path(tempfile("sharded"), "s.zarr")
+  dir.create(dirname(path))
+  on.exit(unlink(dirname(path), recursive = TRUE))
+  ## (time 4, y 120, x 200) in chunks (1, 20, 25), shards (2, 60, 100):
+  ## 2 x 2 x 2 shards, each holding 2 x 3 x 4 = 24 chunks
+  reticulate::py_run_string(sprintf(paste(
+    "import xarray as _xr, numpy as _np, pandas as _pd",
+    "_xr.Dataset({'v': (('time', 'y', 'x'), _np.zeros((4, 120, 200), 'float32'))},",
+    "  coords={'time': _pd.date_range('2026-01-01', periods=4),",
+    "          'y': _np.arange(120) + 0.5, 'x': _np.arange(200) + 0.5}).to_zarr(",
+    "  '%s', mode='w', zarr_format=3, consolidated=False,",
+    "  encoding={'v': {'chunks': (1, 20, 25), 'shards': (2, 60, 100)}})",
+    sep = "\n"), path), convert = FALSE)
+  con <- DBI::dbConnect(xarray(), path, engine = "zarr", consolidated = FALSE)
+  on.exit(DBI::dbDisconnect(con), add = TRUE)
+
+  sh <- xr_chunks(con, "ds.v", level = "shards")
+  expect_identical(attr(sh, "chunking"), "shards")
+  expect_equal(nrow(sh), 8L)
+  expect_equal(unique(sh$cells), 2 * 60 * 100)
+
+  ch <- xr_chunks(con, "ds.v")
+  expect_identical(attr(ch, "chunking"), "storage")
+  expect_equal(nrow(ch), 4 * 6 * 8)
+  per_shard <- table(paste(ch$time_shard, ch$y_shard, ch$x_shard))
+  expect_equal(as.vector(per_shard), rep(24, 8))
+
+  ## a window across a shard corner: rows 50-69, columns 90-109
+  st <- "ds.v.isel(time=1, y=slice(50, 70), x=slice(90, 110))"
+  expect_equal(nrow(xr_chunks(con, st, level = "shards")), 1 * 2 * 2)
+  w <- xr_chunks(con, st)
+  expect_equal(w$y_chunk, c(2, 2, 3, 3))
+  expect_equal(w$x_chunk, c(3, 4, 3, 4))
+  expect_equal(sum(w$selected), 20 * 20)
+
+  expect_error(xr_chunks(make_chunked_con(), "ds.sst", level = "shards"),
+               "not stored in shards")
+})

@@ -23,6 +23,11 @@
 #'   when `x` is a connection
 #' @param params named list of values the statement refers to, when `x`
 #'   is a connection (see [XarrayResult-class])
+#' @param level `"chunks"` (the default) maps storage chunks; `"shards"`
+#'   maps the shards of a sharded zarr v3 array, each a stored object
+#'   holding a grid of inner chunks. At the chunk level a sharded array
+#'   also gets a `d_shard` column per dimension, the shard each chunk
+#'   lives in.
 #' @param max_chunks guard on the number of rows, default
 #'   `getOption("xrdbi.max_chunks", 1e6)`
 #' @param force bypass the guard
@@ -37,7 +42,7 @@
 #'   have numeric coordinates and the wk package is installed,
 #'   `geometry` is a [wk::rct()] over them, with the CRS when one is
 #'   recorded (as for [xr_raster()]). Attribute `chunking` says where
-#'   the shapes came from: `"storage"`, `"dask"` or `"none"`.
+#'   the shapes came from: `"storage"`, `"shards"`, `"dask"` or `"none"`.
 #' @examples
 #' \dontrun{
 #' ## needs a Python environment with xarray (and here zarr, gcsfs)
@@ -57,8 +62,10 @@
 #' }
 #' @export
 xr_chunks <- function(x, statement = NULL, params = NULL,
+                      level = c("chunks", "shards"),
                       max_chunks = getOption("xrdbi.max_chunks", 1e6),
                       force = FALSE) {
+  level <- match.arg(level)
   if (inherits(x, "XarrayConnection")) {
     stopifnot(is.character(statement), length(statement) == 1L)
     res <- dbSendQuery(x, statement, params = params)
@@ -70,7 +77,7 @@ xr_chunks <- function(x, statement = NULL, params = NULL,
   }
   con <- res@ptr$conn
   ds <- conn_ds(con)
-  m <- py_to_r(con@ptr$chunks(res@ptr$obj, ds))
+  m <- py_to_r(con@ptr$chunks(res@ptr$obj, ds, level))
   dims <- m$dims
   counts <- vapply(dims, function(d) length(d$ids), 1)
   n <- prod(counts)
@@ -93,6 +100,9 @@ xr_chunks <- function(x, statement = NULL, params = NULL,
     start <- as.numeric(d$start)
     stop_ <- as.numeric(d$stop)
     cols[[paste0(nm, "_chunk")]] <- as.numeric(d$ids)[idx]
+    if (!is.null(d$shard)) {
+      cols[[paste0(nm, "_shard")]] <- as.numeric(d$shard)[idx]
+    }
     cols[[paste0(nm, "_start")]] <- start[idx]
     cols[[paste0(nm, "_stop")]] <- stop_[idx]
     if (!is.null(d$min)) {
@@ -125,7 +135,7 @@ xr_chunks <- function(x, statement = NULL, params = NULL,
 
 ## the chunk grid of a stored variable and where a selection falls on it
 xrdbi_chunks_py <- r"---(
-def _xrdbi_chunks(obj, ds):
+def _xrdbi_chunks(obj, ds, level='chunks'):
     import numpy as np, pandas as pd, xarray as xr
     if (not isinstance(obj, xr.DataArray) or obj.name is None
             or obj.name not in ds.variables):
@@ -138,8 +148,21 @@ def _xrdbi_chunks(obj, ds):
         raise ValueError(
             'pointwise selections onto a new dimension (%s) have no chunk map; '
             'select with slices or lists along existing dimensions' % ', '.join(extra))
-    pc = src.encoding.get('preferred_chunks') or {}
-    if pc:
+    # zarr v3 sharding: each stored object (shard) holds a grid of inner
+    # chunks; preferred_chunks is the inner chunk, encoding['shards'] the
+    # shard, one size per dim in the variable's dim order
+    shards = src.encoding.get('shards')
+    shards = dict(zip(src.dims, (int(s) for s in shards))) if shards else {}
+    if level == 'shards':
+        if not shards:
+            raise ValueError("'%s' is not stored in shards; use level = 'chunks'"
+                             % obj.name)
+        pc = shards
+    else:
+        pc = src.encoding.get('preferred_chunks') or {}
+    if level == 'shards':
+        source = 'shards'
+    elif pc:
         source = 'storage'
     elif obj.chunks is not None:
         source = 'dask'
@@ -180,7 +203,7 @@ def _xrdbi_chunks(obj, ds):
             pos = np.arange(int(obj.sizes[d])) if d in obj.dims else np.array([0])
             coord = obj[d] if d in obj.coords and d in obj.dims else None
         else:
-            c = int(pc.get(d, n)) if source == 'storage' else n
+            c = int(pc.get(d, n)) if source in ('storage', 'shards') else n
             bounds = np.append(np.arange(0, n, c), n)
             coord = src[d] if has_index else None
             if d in obj.dims:
@@ -207,7 +230,10 @@ def _xrdbi_chunks(obj, ds):
         start, stop = bounds[ids], bounds[ids + 1]
         entry = {'name': d, 'ids': ids.astype('int64'), 'start': start.astype('int64'),
                  'stop': stop.astype('int64'), 'selected': counts.astype('int64'),
-                 'min': None, 'max': None, 'numeric': False}
+                 'min': None, 'max': None, 'numeric': False, 'shard': None}
+        if level == 'chunks' and shards and source == 'storage':
+            # the shard each inner chunk lives in
+            entry['shard'] = (start // shards.get(d, n)).astype('int64')
         if coord is not None and coord.ndim == 1:
             v = np.asarray(coord.values)
             if v.dtype.kind in 'iuf' and len(v) > 0:

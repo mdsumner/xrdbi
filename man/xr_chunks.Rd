@@ -8,6 +8,7 @@ xr_chunks(
   x,
   statement = NULL,
   params = NULL,
+  level = c("chunks", "shards"),
   max_chunks = getOption("xrdbi.max_chunks", 1e+06),
   force = FALSE
 )
@@ -20,6 +21,12 @@ when \code{x} is a connection}
 
 \item{params}{named list of values the statement refers to, when \code{x}
 is a connection (see \link[=XarrayResult-class]{XarrayResult})}
+
+\item{level}{\code{"chunks"} (the default) maps storage chunks; \code{"shards"}
+maps the shards of a sharded zarr v3 array, each a stored object
+holding a grid of inner chunks. At the chunk level a sharded array
+also gets a \code{d_shard} column per dimension, the shard each chunk
+lives in.}
 
 \item{max_chunks}{guard on the number of rows, default
 \code{getOption("xrdbi.max_chunks", 1e6)}}
@@ -38,7 +45,7 @@ how many of them the selection reads. When the last two dimensions
 have numeric coordinates and the wk package is installed,
 \code{geometry} is a \code{\link[wk:rct]{wk::rct()}} over them, with the CRS when one is
 recorded (as for \code{\link[=xr_raster]{xr_raster()}}). Attribute \code{chunking} says where
-the shapes came from: \code{"storage"}, \code{"dask"} or \code{"none"}.
+the shapes came from: \code{"storage"}, \code{"shards"}, \code{"dask"} or \code{"none"}.
 }
 \description{
 The block structure of a stored variable as a table: one row per
