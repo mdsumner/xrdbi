@@ -176,6 +176,9 @@ xr_raster <- function(x, statement = NULL, as_list = FALSE,
 
 #' @importFrom reticulate py_get_item
 ## tier-1 srs lift, verbatim and in order of specificity:
+## 0. an index on the object carrying a pyproj CRS: xproj's CRSIndex (as
+##    gdalxarray sets on its crs coordinate, whose attrs stay empty) or
+##    rasterix's RasterIndex; indexes propagate through selection
 ## 1. a spatial_ref/crs COORDINATE on the object (rioxarray convention;
 ##    coordinates propagate through selection)
 ## 2. the object's own grid_mapping attr naming a variable in the
@@ -195,6 +198,13 @@ lift_srs <- function(obj, coords, ds_parent) {
   var_attrs <- function(container, nm) {
     tryCatch(py_get_item(container, nm)$attrs, error = function(e) NULL)
   }
+
+  ## 0. a CRS-carrying index
+  w <- tryCatch(py_to_r(reticulate::py_eval(paste0(
+    "lambda o: next((ix.crs.to_wkt() for ix in o.xindexes.values() ",
+    "if getattr(ix, 'crs', None) is not None and hasattr(ix.crs, 'to_wkt')), ",
+    "None)"), convert = FALSE)(obj)), error = function(e) NULL)
+  if (is.character(w) && length(w) == 1L && nzchar(w)) return(w)
 
   ## 1. coordinate on the object itself
   for (nm in intersect(c("spatial_ref", "crs"), coords)) {

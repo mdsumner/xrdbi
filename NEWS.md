@@ -1,5 +1,19 @@
 # xrdbi (development version)
 
+## Chunk maps
+
+* New `xr_chunks()` maps the storage chunks a selection touches: one row
+  per chunk with, for each dimension, its chunk index, its 0-based
+  `start`/`stop` index range (as in `isel(slice(start, stop))`) and its
+  coordinate extent (cell edges for numeric axes), then `cells` and how
+  many are `selected`, and a `wk::rct()` over the two spatial dimensions
+  with the CRS. On a whole variable it is the chunk grid; on a selection,
+  the chunks reading it would touch. Shapes come from
+  `encoding['preferred_chunks']`, which zarr, netCDF (netCDF4, h5netcdf)
+  and gdalxarray (classic blocks and multidimensional) all set; without
+  it a dask grid, else one chunk. Only coordinates are read, and a
+  `max_chunks` guard covers stores like ERA5 (1.3 million time chunks).
+
 ## Query parameters
 
 * `dbSendQuery()`, `dbGetQuery()` and `xr_raster()` take `params`, a named
@@ -44,6 +58,10 @@
   dplyr section.
 
 ## Fixes
+
+* `xr_raster()` finds the CRS that gdalxarray records in an xproj
+  `CRSIndex` (its `crs` coordinate has no attributes), or that a rasterix
+  `RasterIndex` carries; `srs` was empty for gdalxarray rasters.
 
 * A 0-d data variable renders with its scalar coordinates ahead of its
   value, as `to_dataframe()` would: a single cell, or a nearest-point
