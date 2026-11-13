@@ -129,6 +129,24 @@ test_that("squeeze admits singleton dims", {
   expect_equal(r[1], -60000)
 })
 
+test_that("float32 coordinates are regular despite their rounding", {
+  skip_if_no_xarray()
+  ## REGRESSION: rotated_pole.nc's float32 x/y (0.44 degree steps) wobble
+  ## by ~1e-5 of the step and failed a fixed 1e-6 tolerance
+  con <- open_fixture_con(gdal_fixture("rotated_pole.nc"))
+  on.exit(DBI::dbDisconnect(con))
+  r <- xr_raster(con, "ds.tg")
+  g <- attr(r, "gis")
+  expect_equal(g$dim, c(137, 108, 1))
+  ## cell centres -35.25 .. 24.59 and -23.65 .. 23.43, half a step out
+  expect_equal(g$bbox, c(-35.25 - 0.22, -23.65 - 0.22, 24.59 + 0.22, 23.43 + 0.22),
+               tolerance = 1e-5)
+
+  ## a genuinely irregular axis still refuses
+  expect_error(
+    xr_raster(con, "ds.tg.isel(x=[0, 1, 3])"), "'x' coordinate is not regular")
+})
+
 test_that("tidy rendering is unaffected by the raster path", {
   skip_if_no_xarray()
   con <- make_pattern_con()

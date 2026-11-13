@@ -28,6 +28,12 @@
 
 ## Fixes
 
+* `xr_raster()` accepts regular grids stored as float32. Their rounding
+  (about 1.2e-7 of each value) made the steps of e.g. a 0.44 degree
+  rotated-pole grid vary by 1e-5 of the step, failing a fixed 1e-6
+  tolerance; the tolerance now scales with the coordinate's precision,
+  and the step is the mean over the axis.
+
 * The cell guard never fired above 2^31 cells, so it missed exactly the
   reads it exists to stop. reticulate converts a Python int that large
   into a wrapped R integer (2^31 became `NA`, 17 billion became

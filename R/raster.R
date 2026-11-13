@@ -99,23 +99,32 @@ xr_raster <- function(x, statement = NULL,  as_list = FALSE,
   }
 
   cvals <- function(d) as.numeric(py_to_r(np$asarray(py_get_item(obj, d))))
+  ## relative precision of a coordinate's storage type: a float32
+  ## coordinate carries ~1.2e-7 * |value| of rounding, so its steps wobble
+  ## by far more than a fixed fraction of the step (rotated-pole and
+  ## projected grids are routinely float32)
+  ceps <- function(d) {
+    switch(py_to_r(py_get_item(obj, d)$dtype$name),
+           float16 = 2^-10, float32 = 2^-23, float64 = 2^-52, 0)
+  }
   yv <- cvals(ydim)
   xv <- cvals(xdim)
-  step_of <- function(v, nm) {
+  step_of <- function(v, nm, eps) {
     if (length(v) < 2L) {
       stop("cannot infer resolution from a length-1 '", nm,
            "' coordinate", call. = FALSE)
     }
-    d <- diff(v)
-    tol <- 1e-6 * abs(d[1L]) + 1e-12
-    if (any(abs(d - d[1L]) > tol)) {
+    ## the mean step: for rounded storage it beats the first difference
+    step <- (v[length(v)] - v[1L]) / (length(v) - 1L)
+    tol <- max(1e-6 * abs(step), 4 * eps * max(abs(v))) + 1e-12
+    if (any(abs(diff(v) - step) > tol)) {
       stop("'", nm, "' coordinate is not regular; no affine rendering ",
            "(warp first)", call. = FALSE)
     }
-    d[1L]
+    step
   }
-  ystep <- step_of(yv, ydim)
-  xstep <- step_of(xv, xdim)
+  ystep <- step_of(yv, ydim, ceps(ydim))
+  xstep <- step_of(xv, xdim, ceps(xdim))
 
   guard_cells(obj, max_cells, force)
   vals <- py_to_r(obj$values)
