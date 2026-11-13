@@ -103,6 +103,9 @@ test_that("guard, refusals and the geometry column", {
     "lon=xr.DataArray([0, 1], dims='pt'))")), "pointwise")
   expect_error(xr_chunks(con, "ds.sst.mean('time').rename('m')"),
                "one stored variable")
+  ## a dim stripped of its coordinate, then subset, cannot be placed
+  expect_error(xr_chunks(con, "ds.sst.drop_vars('lat').isel(lat=slice(1, 3))"),
+               "'lat' has no coordinate and was subset")
 
   skip_if_not_installed("wk")
   ch <- xr_chunks(con, "ds.sst.isel(time=0)")
@@ -183,4 +186,43 @@ test_that("zarr v3 shards: the shard grid, and the shard of each chunk", {
 
   expect_error(xr_chunks(make_chunked_con(), "ds.sst", level = "shards"),
                "not stored in shards")
+})
+
+test_that("curvilinear: each chunk gets the envelope of its 2-D lon/lat", {
+  skip_if_no_xarray()
+  ## dims (y 6, x 8) without 1-D coords; 2-D lon/lat recognised by
+  ## standard_name; storage chunks (3, 4) -> 2 x 2 blocks
+  con <- DBI::dbConnect(xarray(), builder = function(xr) {
+    reticulate::py_run_string(paste(
+      "import xarray as _xr, numpy as _np",
+      "_Y, _X = _np.meshgrid(_np.arange(6.), _np.arange(8.), indexing='ij')",
+      "_dsc = _xr.Dataset({'t': (('y', 'x'), _X + 10 * _Y)},",
+      "  coords={'nav_lon': (('y', 'x'), 100 + 2 * _X + 0.5 * _Y, {'standard_name': 'longitude'}),",
+      "          'nav_lat': (('y', 'x'), -60 + 1.5 * _Y - 0.25 * _X, {'standard_name': 'latitude'})})",
+      "_dsc.t.encoding['preferred_chunks'] = {'y': 3, 'x': 4}",
+      sep = "\n"), convert = FALSE)
+    reticulate::py_eval("_dsc", convert = FALSE)
+  })
+  on.exit(DBI::dbDisconnect(con))
+  ch <- xr_chunks(con, "ds.t")
+  expect_equal(nrow(ch), 4L)
+  Y <- matrix(0:5, 6, 8)
+  X <- matrix(0:7, 6, 8, byrow = TRUE)
+  lon <- 100 + 2 * X + 0.5 * Y
+  lat <- -60 + 1.5 * Y - 0.25 * X
+  for (k in seq_len(4)) {
+    r <- (ch$y_start[k] + 1):ch$y_stop[k]
+    cl <- (ch$x_start[k] + 1):ch$x_stop[k]
+    expect_equal(c(ch$nav_lon_min[k], ch$nav_lon_max[k]), range(lon[r, cl]))
+    expect_equal(c(ch$nav_lat_min[k], ch$nav_lat_max[k]), range(lat[r, cl]))
+  }
+  ## a selection keeps only the blocks it touches, envelopes intact
+  w <- xr_chunks(con, "ds.t.isel(y=slice(4, 6), x=slice(1, 6))")
+  expect_equal(w$y_chunk, c(1, 1))
+  expect_equal(w$nav_lon_min, ch$nav_lon_min[ch$y_chunk == 1])
+
+  skip_if_not_installed("wk")
+  expect_identical(wk::wk_crs(ch$geometry), "OGC:CRS84")
+  expect_equal(unlist(wk::wk_bbox(ch$geometry))[1:4],
+               c(xmin = min(lon), ymin = min(lat), xmax = max(lon), ymax = max(lat)))
 })

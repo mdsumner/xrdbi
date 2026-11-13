@@ -41,7 +41,15 @@
 #'   how many of them the selection reads. When the last two dimensions
 #'   have numeric coordinates and the wk package is installed,
 #'   `geometry` is a [wk::rct()] over them, with the CRS when one is
-#'   recorded (as for [xr_raster()]). Attribute `chunking` says where
+#'   recorded (as for [xr_raster()]). On a curvilinear grid, where 2-D
+#'   longitude/latitude coordinates (recognised by CF `standard_name`,
+#'   units, or common names) span the last two dimensions, each chunk
+#'   also gets the envelope of its block of those values (`lon_min`,
+#'   `lon_max`, `lat_min`, `lat_max`, named after the coordinates; cell
+#'   centres, so half a cell inside the edges, and not split at the
+#'   antimeridian), and `geometry` is that envelope in OGC:CRS84 when
+#'   the dimensions have no 1-D coordinates of their own. Attribute
+#'   `chunking` says where
 #'   the shapes came from: `"storage"`, `"shards"`, `"dask"` or `"none"`.
 #' @examples
 #' \dontrun{
@@ -92,10 +100,12 @@ xr_chunks <- function(x, statement = NULL, params = NULL,
   cols <- list()
   sel <- rep(1, n)
   cells <- rep(1, n)
+  at <- vector("list", length(dims))
   for (i in seq_along(dims)) {
     d <- dims[[i]]
     idx <- rep(rep(seq_len(counts[i]), each = prod(counts[-seq_len(i)])),
                times = prod(counts[seq_len(i - 1L)]))
+    at[[i]] <- idx
     nm <- d$name
     start <- as.numeric(d$start)
     stop_ <- as.numeric(d$stop)
@@ -127,6 +137,22 @@ xr_chunks <- function(x, statement = NULL, params = NULL,
     cols$geometry <- wk::rct(cols[[paste0(xn, "_min")]], cols[[paste0(yn, "_min")]],
                              cols[[paste0(xn, "_max")]], cols[[paste0(yn, "_max")]],
                              crs = if (nzchar(wkt)) wkt else NULL)
+  }
+  ## curvilinear: the envelope of each chunk's block of 2-D lon/lat
+  env <- m$envelope
+  if (!is.null(env)) {
+    rc <- cbind(at[[nd - 1L]], at[[nd]])
+    pick <- function(v) as.matrix(v)[rc]
+    cols[[paste0(env$x, "_min")]] <- pick(env$xmin)
+    cols[[paste0(env$x, "_max")]] <- pick(env$xmax)
+    cols[[paste0(env$y, "_min")]] <- pick(env$ymin)
+    cols[[paste0(env$y, "_max")]] <- pick(env$ymax)
+    if (is.null(cols$geometry) && requireNamespace("wk", quietly = TRUE)) {
+      cols$geometry <- wk::rct(cols[[paste0(env$x, "_min")]],
+                               cols[[paste0(env$y, "_min")]],
+                               cols[[paste0(env$x, "_max")]],
+                               cols[[paste0(env$y, "_max")]], crs = "OGC:CRS84")
+    }
   }
   out <- list2DF(cols, nrow = n)
   attr(out, "chunking") <- m$source
@@ -191,7 +217,40 @@ def _xrdbi_chunks(obj, ds, level='chunks'):
                 pos = np.asarray(idx.get_indexer(values, method='nearest', tolerance=tol))
         return pos
 
+    def place_2d(ydim, xdim):
+        # dims without 1-D coordinates (typical of curvilinear grids) can
+        # still be placed: 2-D coordinates are copied exactly into a
+        # selection, so its first column and row are found in the source
+        # by their (a, b) value pairs, when those pairs are unique
+        cands = [k for k, c in src.coords.items()
+                 if c.ndim == 2 and set(c.dims) == {ydim, xdim} and c.dtype.kind in 'iuf'
+                 and k in obj.coords and obj[k].ndim == 2]
+        if len(cands) < 2:
+            return {}
+        a, b = cands[0], cands[1]
+        sa = np.asarray(src[a].transpose(ydim, xdim).values)
+        sb = np.asarray(src[b].transpose(ydim, xdim).values)
+        mi = pd.MultiIndex.from_arrays([sa.ravel(), sb.ravel()])
+        if not mi.is_unique:
+            return {}
+        oa = np.asarray(obj[a].transpose(ydim, xdim).values)
+        ob = np.asarray(obj[b].transpose(ydim, xdim).values)
+        rows = mi.get_indexer(pd.MultiIndex.from_arrays([oa[:, 0], ob[:, 0]]))
+        cols = mi.get_indexer(pd.MultiIndex.from_arrays([oa[0, :], ob[0, :]]))
+        if (rows < 0).any() or (cols < 0).any():
+            return {}
+        nx = sa.shape[1]
+        return {ydim: rows // nx, xdim: cols % nx}
+
+    placed = {}
+    if source in ('storage', 'shards') and len(src.dims) >= 2:
+        ydim, xdim = src.dims[-2], src.dims[-1]
+        if (ydim in obj.dims and xdim in obj.dims
+                and not (ydim in src.xindexes and xdim in src.xindexes)):
+            placed = place_2d(ydim, xdim)
+
     dims = []
+    starts = {}
     for d in src.dims:
         n = int(src.sizes[d])
         has_index = d in src.xindexes or (d in src.coords and src[d].ndim == 1)
@@ -214,6 +273,8 @@ def _xrdbi_chunks(obj, ds, level='chunks'):
                                          "the stored coordinate" % d)
                 elif int(obj.sizes[d]) == n:
                     pos = np.arange(n)
+                elif d in placed:
+                    pos = np.asarray(placed[d])
                 else:
                     raise ValueError("'%s' has no coordinate and was subset; its chunks "
                                      "cannot be placed" % d)
@@ -251,5 +312,40 @@ def _xrdbi_chunks(obj, ds, level='chunks'):
                 entry['min'] = one(v[start])
                 entry['max'] = one(v[stop - 1])
         dims.append(entry)
-    return {'var': str(obj.name), 'source': source, 'dims': dims}
+        starts[d] = bounds[:-1]
+    out = {'var': str(obj.name), 'source': source, 'dims': dims, 'envelope': None}
+
+    # curvilinear: 2-D longitude/latitude over the last two dims give each
+    # chunk the envelope of its block of coordinate values
+    if len(dims) >= 2:
+        ydim, xdim = dims[-2]['name'], dims[-1]['name']
+        ll = {}
+        for k, c in src.coords.items():
+            if c.ndim != 2 or set(c.dims) != {ydim, xdim} or c.dtype.kind not in 'iuf':
+                continue
+            sn = str(c.attrs.get('standard_name', '')).lower()
+            un = str(c.attrs.get('units', '')).lower()
+            nm = str(k).lower()
+            if (sn == 'longitude' or un in ('degrees_east', 'degree_east', 'degrees_e')
+                    or nm in ('lon', 'longitude', 'nav_lon', 'lon_rho', 'xlong', 'glamt')):
+                ll.setdefault('x', k)
+            elif (sn == 'latitude' or un in ('degrees_north', 'degree_north', 'degrees_n')
+                    or nm in ('lat', 'latitude', 'nav_lat', 'lat_rho', 'xlat', 'gphit')):
+                ll.setdefault('y', k)
+        if 'x' in ll and 'y' in ll:
+            iy = dims[-2]['ids']
+            ix = dims[-1]['ids']
+            env = {'x': str(ll['x']), 'y': str(ll['y'])}
+            for axis in ('x', 'y'):
+                a = np.asarray(src[ll[axis]].transpose(ydim, xdim).values, dtype='float64')
+                lo = np.where(np.isnan(a), np.inf, a)
+                hi = np.where(np.isnan(a), -np.inf, a)
+                lo = np.minimum.reduceat(np.minimum.reduceat(lo, starts[ydim], axis=0),
+                                         starts[xdim], axis=1)
+                hi = np.maximum.reduceat(np.maximum.reduceat(hi, starts[ydim], axis=0),
+                                         starts[xdim], axis=1)
+                env[axis + 'min'] = lo[np.ix_(iy, ix)]
+                env[axis + 'max'] = hi[np.ix_(iy, ix)]
+            out['envelope'] = env
+    return out
 )---"

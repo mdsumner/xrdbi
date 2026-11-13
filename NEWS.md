@@ -19,6 +19,13 @@
   default chunk level a sharded array gets a `d_shard` column per
   dimension, the shard each chunk lives in.
 
+* On curvilinear grids `xr_chunks()` gives each chunk the envelope of its
+  block of 2-D longitude/latitude (`lon_min` ... `lat_max`, named after the
+  coordinates, recognised by CF `standard_name`, units or common names),
+  and uses it as `geometry` (OGC:CRS84) when the grid has no 1-D axes.
+  Selections on index-only dimensions (`isel(eta_rho=...)`) are placed
+  through the 2-D coordinates, whose value pairs are copied exactly.
+
 ## Query parameters
 
 * `dbSendQuery()`, `dbGetQuery()` and `xr_raster()` take `params`, a named

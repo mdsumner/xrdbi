@@ -44,7 +44,15 @@ otherwise. Then \code{cells}, the chunk's size in cells, and \code{selected},
 how many of them the selection reads. When the last two dimensions
 have numeric coordinates and the wk package is installed,
 \code{geometry} is a \code{\link[wk:rct]{wk::rct()}} over them, with the CRS when one is
-recorded (as for \code{\link[=xr_raster]{xr_raster()}}). Attribute \code{chunking} says where
+recorded (as for \code{\link[=xr_raster]{xr_raster()}}). On a curvilinear grid, where 2-D
+longitude/latitude coordinates (recognised by CF \code{standard_name},
+units, or common names) span the last two dimensions, each chunk
+also gets the envelope of its block of those values (\code{lon_min},
+\code{lon_max}, \code{lat_min}, \code{lat_max}, named after the coordinates; cell
+centres, so half a cell inside the edges, and not split at the
+antimeridian), and \code{geometry} is that envelope in OGC:CRS84 when
+the dimensions have no 1-D coordinates of their own. Attribute
+\code{chunking} says where
 the shapes came from: \code{"storage"}, \code{"shards"}, \code{"dask"} or \code{"none"}.
 }
 \description{
