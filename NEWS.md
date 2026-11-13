@@ -2,6 +2,13 @@
 
 # xrdbi (development)
 
+## README
+
+* The README is now `README.Rmd`, built live with
+  `devtools::build_readme()` against the remote examples (OISST over HTTPS,
+  ARCO ERA5 on GCS, the OISST multidim VRT via gdalxarray), and it gains a
+  dplyr section.
+
 ## Fixes
 
 * The cell guard never fired above 2^31 cells, so it missed exactly the
