@@ -45,6 +45,11 @@
 
 ## Fixes
 
+* A 0-d data variable renders with its scalar coordinates ahead of its
+  value, as `to_dataframe()` would: a single cell, or a nearest-point
+  lookup, keeps where it is (`time`, `lat`, `lon`, ...) instead of only
+  the value. A 0-d coordinate still renders just itself.
+
 * `xr_raster()` accepts regular grids stored as float32. Their rounding
   (about 1.2e-7 of each value) made the steps of e.g. a 0.44 degree
   rotated-pole grid vary by 1e-5 of the step, failing a fixed 1e-6

@@ -151,6 +151,27 @@ test_that("0-d datetime renders as POSIXct, not integer nanoseconds", {
   expect_false(is.numeric(t1$time))
 })
 
+test_that("a 0-d data variable keeps its scalar coordinates", {
+  skip_if_no_xarray()
+  con <- make_con()
+  on.exit(DBI::dbDisconnect(con))
+
+  ## REGRESSION: a single cell rendered only its value, dropping where it
+  ## is (what were dims before selecting: the point of a nearest lookup)
+  one <- DBI::dbGetQuery(con, "ds.sst.isel(time=1, lat=2, lon=3)")
+  expect_named(one, c("time", "lat", "lon", "zlev", "cell_area", "sst"))
+  all <- DBI::dbGetQuery(con, "ds.sst")
+  want <- all[all$time == one$time & all$lat == one$lat & all$lon == one$lon, ]
+  rownames(want) <- NULL
+  expect_equal(one, want)
+
+  ## a reduction keeps the scalar coords xarray keeps
+  expect_named(DBI::dbGetQuery(con, "ds.sst.mean()"), c("zlev", "sst"))
+  ## a 0-d coordinate renders just itself, as its table does
+  expect_named(DBI::dbGetQuery(con, "ds.cell_area.isel(lat=0, lon=0)"),
+               "cell_area")
+})
+
 test_that("empty selections emit a kind message", {
   skip_if_no_xarray()
   con <- make_desc_con()
