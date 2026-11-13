@@ -1,14 +1,19 @@
 Package: xrdbi
 Title: 'DBI' Backend for 'xarray' via a Live 'reticulate' Session
-Version: 0.0.1.9007
-Authors@R:
+Version: 0.0.1.9008
+Authors@R: c(
     person("Michael", "Sumner", email = "mdsumner@gmail.com",
-           role = c("aut", "cre"))
-Description: Treats a live Python session holding an 'xarray' object as a
-    database connection. Tables are data variables, fields are dimensions
-    and coordinates, queries are Python expressions (or compiled from a
-    small structured spec) evaluated lazily against the dataset, and
-    fetching renders to various output types. 
+           role = c("aut", "cre")),
+    person("The GDAL/OGR contributors", role = "cph",
+           comment = "test fixtures in inst/extdata/autotest, see inst/COPYRIGHTS")
+    )
+Description: Treats a live Python session holding an 'xarray'
+    <https://xarray.dev> object as a database connection. Tables are
+    variables, fields are dimensions and coordinates, and queries are
+    Python expressions (or compiled from a small structured spec or from
+    'dplyr' verbs) evaluated lazily against the dataset. Fetching renders
+    the tidy long form, one row per cell, built in R from the values;
+    results can also render as an in-memory raster.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -18,12 +23,18 @@ Imports:
     DBI (>= 1.2.0),
     dplyr,
     methods,
-    reticulate (>= 1.35.0),
+    reticulate (>= 1.41.0),
     rlang, 
     utils
 Suggests:
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
+SystemRequirements: Python (>= 3.11) with the 'xarray', 'pandas' and
+    'numpy' modules, plus IO engines for the data at hand (e.g.
+    'netCDF4', 'h5netcdf', 'zarr', 'gdalxarray'). reticulate provisions
+    the declared modules automatically when no Python is configured;
+    'gdalxarray' also needs the GDAL Python bindings, which pip cannot
+    install.
 URL: https://github.com/mdsumner/xrdbi
 BugReports: https://github.com/mdsumner/xrdbi/issues
 Config/roxygen2/version: 8.0.0

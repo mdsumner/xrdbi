@@ -208,7 +208,8 @@ tbl_preview <- function(x, n = 6L) {
                               format(unlist(sizes), big.mark = ",")),
                       collapse = ", ")
   ## clamp: 1 along every dim, up to n along the last (C-order head)
-  clamp <- setNames(rep(1L, length(sizes)), names(sizes))
+  clamp <- rep(1L, length(sizes))
+  names(clamp) <- names(sizes)
   if (length(sizes)) {
     last <- length(sizes)
     clamp[last] <- min(sizes[[last]], as.integer(n))

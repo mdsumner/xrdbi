@@ -3,3 +3,5 @@
 ^\.positai$
 ^\.claude$
 ^README\.Rmd$
+^cran-comments\.md$
+^tools$

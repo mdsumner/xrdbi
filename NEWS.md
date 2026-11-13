@@ -1,6 +1,4 @@
-# xrdbi (dev)
-
-# xrdbi (development)
+# xrdbi (development version)
 
 ## CRAN preparation
 
@@ -15,6 +13,11 @@
   `?XarrayResult-class`, driver methods on `?xarray`. Every exported
   function documents its return value and has examples; those needing
   Python are in `\dontrun{}`.
+
+* DESCRIPTION declares the Python requirement in `SystemRequirements`,
+  links xarray, credits the GDAL/OGR contributors for the vendored test
+  fixtures (see `inst/COPYRIGHTS`), and requires reticulate >= 1.41.0,
+  the first release with `py_require()` (which `.onLoad()` calls).
 
 ## README
 
