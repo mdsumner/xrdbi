@@ -27,6 +27,20 @@
   pandas render. Datasets, 0-d and empty results, MultiIndex coordinates
   and pandas-stage statements still go through the pandas render.
 
+* Datasets now take the R-built path too, mirroring xarray's
+  `to_dataframe()`: rows are every combination of the Dataset's dims, and
+  each non-index variable is broadcast across them, whether or not the
+  variables share dims. 10M rows x 2 variables: 0.78 s instead of 1.71 s,
+  identical output. Stacked (MultiIndex) dims, other non-dim indexes and
+  pandas extension arrays still use the pandas render.
+
+* The cell guard now applies to Datasets. A Dataset has no `.size`, so
+  the guard silently never fired: `dbGetQuery(con, "ds")` on a large store
+  would try to load all of it. It now counts rows x data variables.
+
+* A 0-d Dataset (every dim selected to one value) renders as one row; it
+  errored in `to_dataframe()`.
+
 * Strict bounds on a dimension in `tbl()` filters (`lat > 18`,
   `time < as.Date(...)`) no longer drop to a pandas `.query()`. The
   inclusive `.sel()` hull is trimmed with a boolean `.isel()` on the

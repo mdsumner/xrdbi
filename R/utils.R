@@ -2,7 +2,16 @@
 guard_cells <- function(obj, max_cells, force) {
   if (isTRUE(force)) return(invisible(NULL))
   bt <- import_builtins(convert = FALSE)
-  n <- tryCatch(py_to_r(bt$int(obj$size)), error = function(e) NA)
+  n <- tryCatch({
+    if (py_to_r(bt$hasattr(obj, "data_vars"))) {
+      ## a Dataset has no .size: its long form is every dim combination
+      ## times each data variable
+      rows <- prod(as.numeric(unlist(py_to_r(bt$list(obj$sizes$values())))))
+      rows * max(1, py_to_r(bt$len(obj$data_vars)))
+    } else {
+      py_to_r(bt$int(obj$size))
+    }
+  }, error = function(e) NA)
   if (!is.na(n) && is.finite(max_cells) && n > max_cells) {
     stop(sprintf(paste0(
       "materializing %s cells exceeds the guard (%s); ",
@@ -20,12 +29,13 @@ render_dataframe <- function(conn, obj) {
   frame_to_r(conn, conn@ptr$render(obj))
 }
 
-## The long form repeats every coordinate once per cell. For a plain
-## DataArray, R builds those columns itself (rep() over the 1-D
-## coordinate values) and only the values, flattened in C order, cross
-## from Python; N-D non-dimension coords are flattened Python-side.
-## NULL means the object needs the pandas render (Datasets, 0-d,
-## empty, MultiIndex, a name that is also a coordinate).
+## The long form repeats every coordinate once per cell. For a
+## DataArray or Dataset, R builds the dim, 1-D and scalar columns itself
+## (rep() over the 1-D values) and only N-D variables, flattened in C
+## order, cross from Python. NULL means the object needs the pandas
+## render (0-d, empty, MultiIndex or other non-dim indexes, pandas
+## extension arrays, a DataArray name that is also a coordinate, or not
+## xarray at all).
 plan_result <- function(conn, obj) {
   p <- conn@ptr$plan(obj)
   if (inherits(p, "python.builtin.NoneType")) return(NULL)
@@ -154,6 +164,10 @@ xrdbi_render_py <- paste(
   "                        *obj.data_vars]",
   "            return pd.DataFrame(columns=list(dict.fromkeys(cols)))",
   "    if isinstance(obj, xr.Dataset):",
+  "        if len(obj.dims) == 0:",
+  "            # to_dataframe refuses 0-d: one row, a column per variable",
+  "            return pd.DataFrame({k: [v.values[()]]",
+  "                                 for k, v in obj.variables.items()})",
   "        return obj.to_dataframe().reset_index()",
   "    if isinstance(obj, xr.DataArray):",
   "        name = obj.name if obj.name is not None else 'value'",
@@ -246,49 +260,62 @@ def _xrdbi_columns(df):
     return out
 )---"
 
-## plan for building a DataArray's long form in R (see plan_result):
-## returns (meta, flats) or None. meta['cols'] lists the output columns
-## in _xrdbi_render's order: kind 'dim' (1-D values in 'col', repeated
-## along 'axis'), 'scalar' (one value in 'col'), 'flat' (index into
-## flats: a C-order 1-D array, sliced per fetch by _xrdbi_slice)
+## plan for building the long form in R (see plan_result): returns
+## (meta, flats) or None. It mirrors xarray's Dataset._to_dataframe:
+## rows are the C-order product of the dims (a DataArray's own order, a
+## Dataset's list(ds.dims)); columns are the dim indexes, then every
+## non-index variable in storage order, broadcast to all dims (a
+## DataArray goes through to_dataset(name=), as to_dataframe does).
+## meta['cols'] kinds: 'dim' (1-D values in 'col', repeated along
+## 'axis'), 'scalar' (one value in 'col'), 'flat' (index into flats: a
+## C-order 1-D array, sliced per fetch by _xrdbi_slice)
 xrdbi_plan_py <- r"---(
 def _xrdbi_plan(obj):
     import xarray as xr, numpy as np, pandas as pd
-    if not isinstance(obj, xr.DataArray) or obj.ndim == 0 or 0 in obj.shape:
+    if isinstance(obj, xr.DataArray):
+        name = obj.name if obj.name is not None else 'value'
+        if name in obj.dims or name in obj.coords:
+            return None
+        ds = obj.to_dataset(name=name)
+        dims = list(obj.dims)
+    elif isinstance(obj, xr.Dataset):
+        ds = obj
+        dims = list(obj.dims)
+    else:
         return None
-    name = obj.name if obj.name is not None else 'value'
-    if name in obj.dims or name in obj.coords:
+    sizes = {d: int(ds.sizes[d]) for d in dims}
+    if not dims or 0 in sizes.values():
         return None
-    if any(isinstance(ix, pd.MultiIndex) for ix in obj.indexes.values()):
+    # decline what _to_dataframe treats specially: indexes that are not
+    # exactly the dim coordinates (MultiIndex levels, custom indexes) and
+    # pandas extension arrays
+    if set(ds.xindexes) != {d for d in dims if d in ds.variables}:
+        return None
+    if not all(isinstance(v.dtype, np.dtype) for v in ds.variables.values()):
         return None
 
     def one(nm, v):
         return _xrdbi_columns(pd.DataFrame({nm: v}))[0]
 
-    dims = list(obj.dims)
     cols, flats = [], []
     for i, d in enumerate(dims):
         # a dim without a coordinate gives 0..n-1, as to_dataframe does
-        cols.append({'name': d, 'kind': 'dim', 'axis': i,
-                     'col': one(d, obj[d].values)})
-    for c in obj.coords:
-        if c in dims:
+        v = ds.indexes[d] if d in ds.xindexes else np.arange(sizes[d])
+        cols.append({'name': d, 'kind': 'dim', 'axis': i, 'col': one(d, v)})
+    for k, v in ds.variables.items():
+        if k in ds.xindexes:
             continue
-        co = obj.coords[c]
-        if co.ndim == 0:
-            cols.append({'name': c, 'kind': 'scalar',
-                         'col': one(c, [co.values[()]])})
-        elif co.ndim == 1:
-            cols.append({'name': c, 'kind': 'dim',
-                         'axis': dims.index(co.dims[0]),
-                         'col': one(c, co.values)})
+        if v.ndim == 0:
+            cols.append({'name': k, 'kind': 'scalar',
+                         'col': one(k, [v.values[()]])})
+        elif v.ndim == 1:
+            cols.append({'name': k, 'kind': 'dim',
+                         'axis': dims.index(v.dims[0]),
+                         'col': one(k, v.values)})
         else:
-            flats.append(co.broadcast_like(obj).transpose(*dims)
-                         .values.reshape(-1))
-            cols.append({'name': c, 'kind': 'flat', 'flat': len(flats) - 1})
-    flats.append(np.asarray(obj.values).reshape(-1))
-    cols.append({'name': name, 'kind': 'flat', 'flat': len(flats) - 1})
-    return ({'shape': [int(s) for s in obj.shape], 'cols': cols}, flats)
+            flats.append(v.set_dims(sizes).values.reshape(-1))
+            cols.append({'name': k, 'kind': 'flat', 'flat': len(flats) - 1})
+    return ({'shape': [sizes[d] for d in dims], 'cols': cols}, flats)
 
 def _xrdbi_slice(flat, start, stop):
     import pandas as pd

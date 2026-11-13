@@ -88,23 +88,60 @@ test_that("dbReadTable takes the plan for data variables", {
                    frame_to_r(con, con@ptr$render(v)))
 })
 
+test_that("Datasets match the pandas render", {
+  skip_if_no_xarray()
+  con <- make_con()
+  on.exit(DBI::dbDisconnect(con))
+  ## shared dims, plus a 0-d and a 2-D coordinate
+  df <- expect_plan_matches(con, "ds")
+  expect_named(df, c("time", "lat", "lon", "sst", "ice", "zlev", "cell_area"))
+  expect_plan_matches(con, "ds[['sst']].isel(lon=slice(1, 4))")
+  ## variables over different dims broadcast to every dim combination
+  expect_plan_matches(con, paste0(
+    "ds.assign(tmean=ds.sst.mean(('lat', 'lon')), clim=ds.sst.mean('time'),",
+    " k=xr.DataArray(1.5), label=xr.DataArray(['a', 'b', 'c'], dims='time'))"))
+  ## a variable stored in another dim order is transposed into the
+  ## Dataset's order
+  expect_plan_matches(con, "ds.assign(sst=ds.sst.transpose('lon', 'lat', 'time'))")
+  ## dims without coordinates
+  expect_plan_matches(con, "ds.drop_vars(['lat', 'cell_area'])")
+})
+
+test_that("the cell guard counts a Dataset's long form", {
+  skip_if_no_xarray()
+  con <- make_con()
+  on.exit(DBI::dbDisconnect(con))
+  ## 3 x 4 x 5 rows, two data variables
+  expect_error(DBI::dbGetQuery(con, "ds", max_cells = 119), "120 cells")
+  expect_equal(nrow(DBI::dbGetQuery(con, "ds", max_cells = 120)), 60L)
+  expect_equal(nrow(DBI::dbGetQuery(con, "ds", max_cells = 1, force = TRUE)),
+               60L)
+})
+
 test_that("shapes the plan declines still render", {
   skip_if_no_xarray()
   con <- make_con()
   on.exit(DBI::dbDisconnect(con))
   declined <- c(
-    "ds",                                   # Dataset
     "ds.sst.isel(time=0, lat=0, lon=0)",    # 0-d
+    "ds.isel(time=0, lat=0, lon=0)",        # 0-d Dataset
     "ds.sst.isel(time=slice(0, 0))",        # empty
+    "ds.isel(time=slice(0, 0))",            # empty Dataset
     "ds.lat",                               # name is its own dim
     "ds.cell_area",                         # name is a coordinate
     "ds.sst.stack(cell=('lat', 'lon'))",    # MultiIndex
+    "ds.stack(cell=('lat', 'lon'))",        # MultiIndex Dataset
     "ds.sst.pipe(_xrdbi_render)")           # already a DataFrame
   for (s in declined) {
     obj <- DBI::dbSendQuery(con, s)@ptr$obj
     expect_null(plan_result(con, obj), label = s)
     expect_s3_class(suppressMessages(DBI::dbGetQuery(con, s)), "data.frame")
   }
+
+  ## REGRESSION: a 0-d Dataset errored in to_dataframe; it is one row
+  one <- DBI::dbGetQuery(con, "ds.isel(time=0, lat=0, lon=0)")
+  expect_equal(nrow(one), 1L)
+  expect_named(one, c("sst", "ice", "time", "lat", "lon", "zlev", "cell_area"))
 })
 
 test_that("dim_window equals the row arithmetic for every window", {
