@@ -2,6 +2,29 @@
 
 # xrdbi (development)
 
+## Faster, type-faithful conversion to R
+
+* `dbFetch()`, `dbGetQuery()`, `dbReadTable()` and `collect()` now convert the
+  rendered pandas frame column by column from numpy buffers instead of with
+  reticulate's whole-DataFrame conversion. A 10M-row fetch with a time
+  dimension drops from ~22 s to ~1.2 s; nearly all the old cost was
+  reticulate's handling of a datetime column.
+
+* Types that were wrong before now convert properly: NaT is `NA` (it was
+  1677-09-21 in a numpy route), timedeltas are `difftime` seconds (they were
+  `NA` dates), pandas string columns such as string coordinates are character
+  (they were left as Python objects), categoricals are factors (they made the
+  fetch error), cftime values from non-standard calendars are ISO strings
+  (they were a list of Python objects), bytes are decoded, and nullable
+  integers and booleans keep `NA`.
+
+* Datetimes without a zone now carry `tzone = "UTC"`, so they display as the
+  instant the source means regardless of the session zone. Timezone-aware
+  datetimes keep their zone.
+
+* The GDAL autotest fixture tests had been skipping because of a stale
+  helper call; they run again.
+
 ## xr_raster(): raster rendering of a result
 
 * Printing a `tbl` now renders a lazy preview - sizes from metadata, the first cells

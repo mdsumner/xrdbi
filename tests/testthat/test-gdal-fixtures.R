@@ -3,7 +3,7 @@
 ## when it is absent. Expected values below were verified directly
 ## against these files with xarray 2026.4.0.
 
-NC <- function(f) gdal_fixture("gdrivers", "data", "netcdf", f)
+NC <- function(f) gdal_fixture(f)
 
 test_that("trmm.nc: baseline tables, fields, query", {
   skip_if_no_xarray()

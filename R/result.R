@@ -91,11 +91,7 @@ setMethod("dbFetch", "XarrayResult",
     bt <- import_builtins(convert = FALSE)
     chunk <- py_get_item(ptr$df$iloc,
                          bt$slice(as.integer(start), as.integer(stop_)))
-    out <- py_to_r(chunk)
-    ## pandas index comes along as rownames; drop for DBI cleanliness
-    rownames(out) <- NULL
-    attr(out, "pandas.index") <- NULL
-    out
+    frame_to_r(ptr$conn, chunk)
   })
 
 #' @export
