@@ -55,7 +55,7 @@ setMethod("dbGetStatement", "XarrayResult", function(res, ...) {
 
 render_result <- function(res, max_cells, force) {
   ptr <- res@ptr
-  if (!is.null(ptr$df)) return(invisible(NULL))
+  if (!is.null(ptr$df) || !is.null(ptr$plan)) return(invisible(NULL))
   xr <- conn_xr(ptr$conn)
   bt <- import_builtins(convert = FALSE)
   obj <- ptr$obj
@@ -63,8 +63,15 @@ render_result <- function(res, max_cells, force) {
     py_to_r(bt$isinstance(obj, xr$Dataset))
   if (is_xr) guard_cells(obj, max_cells, force)
 
-  ## everything renders through the python helper: Dataset, DataArray
-  ## (incl. 0-d and dim coords), and plain python scalars
+  ## a plain DataArray: R builds the coordinate columns (plan_result)
+  if (is_xr) ptr$plan <- plan_result(ptr$conn, obj)
+  if (!is.null(ptr$plan)) {
+    ptr$nrow <- ptr$plan$n
+    return(invisible(NULL))
+  }
+
+  ## everything else renders through the python helper: Dataset,
+  ## DataArray (incl. 0-d and dim coords), and plain python scalars
   ptr$df <- ptr$conn@ptr$render(obj)
   ptr$nrow <- py_to_r(bt$len(ptr$df))
 
@@ -88,6 +95,7 @@ setMethod("dbFetch", "XarrayResult",
     stop_ <- if (n < 0) ptr$nrow else min(ptr$nrow, start + as.integer(n))
     ptr$cursor <- stop_
 
+    if (!is.null(ptr$plan)) return(plan_fetch(ptr$conn, ptr$plan, start, stop_))
     bt <- import_builtins(convert = FALSE)
     chunk <- py_get_item(ptr$df$iloc,
                          bt$slice(as.integer(start), as.integer(stop_)))
@@ -112,6 +120,7 @@ setMethod("dbGetRowCount", "XarrayResult", function(res, ...) {
 setMethod("dbClearResult", "XarrayResult", function(res, ...) {
   res@ptr$obj <- NULL
   res@ptr$df <- NULL
+  res@ptr$plan <- NULL
   res@ptr$valid <- FALSE
   invisible(TRUE)
 })

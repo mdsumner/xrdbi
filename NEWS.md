@@ -18,6 +18,15 @@
   (they were a list of Python objects), bytes are decoded, and nullable
   integers and booleans keep `NA`.
 
+* For a plain DataArray (the usual `ds.var.sel(...)` statement, and `tbl()`
+  pipelines whose filters all push down to `.sel()`), the long form is now
+  built in R: only the values, flattened in C order, cross from Python, and
+  the coordinate columns are repeated with `rep()`. The 10M-row fetch drops
+  again to ~0.55 s, and `dbFetch(n = )` builds only the rows asked for
+  (10 chunks of 1M rows: ~0.4 s in total). The output is identical to the
+  pandas render. Datasets, 0-d and empty results, MultiIndex coordinates
+  and pandas-stage statements still go through the pandas render.
+
 * Datetimes without a zone now carry `tzone = "UTC"`, so they display as the
   instant the source means regardless of the session zone. Timezone-aware
   datetimes keep their zone.

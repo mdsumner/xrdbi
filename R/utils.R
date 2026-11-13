@@ -15,7 +15,78 @@ guard_cells <- function(obj, max_cells, force) {
 
 ## the rendering: tidy long form, one row per cell
 render_dataframe <- function(conn, obj) {
+  plan <- plan_result(conn, obj)
+  if (!is.null(plan)) return(plan_fetch(conn, plan, 0, plan$n))
   frame_to_r(conn, conn@ptr$render(obj))
+}
+
+## The long form repeats every coordinate once per cell. For a plain
+## DataArray, R builds those columns itself (rep() over the 1-D
+## coordinate values) and only the values, flattened in C order, cross
+## from Python; N-D non-dimension coords are flattened Python-side.
+## NULL means the object needs the pandas render (Datasets, 0-d,
+## empty, MultiIndex, a name that is also a coordinate).
+plan_result <- function(conn, obj) {
+  p <- conn@ptr$plan(obj)
+  if (inherits(p, "python.builtin.NoneType")) return(NULL)
+  meta <- py_to_r(py_get_item(p, 0L))
+  shape <- as.numeric(unlist(meta$shape))
+  cols <- lapply(meta$cols, function(col) {
+    if (!is.null(col$col)) col$vals <- column_to_r(col$col)
+    col$col <- NULL
+    col
+  })
+  list(shape = shape, n = prod(shape), cols = cols,
+       flats = py_get_item(p, 1L))
+}
+
+## rows [start, stop) of a planned result, 0-based
+plan_fetch <- function(conn, plan, start, stop) {
+  len <- stop - start
+  shape <- plan$shape
+  whole <- start == 0 && stop == plan$n
+  out <- lapply(plan$cols, function(col) {
+    switch(col$kind,
+      dim = {
+        ax <- col$axis + 1L
+        inner <- prod(shape[-seq_len(ax)])
+        if (whole) {
+          rep(rep(col$vals, each = inner),
+              times = prod(shape[seq_len(ax - 1L)]))
+        } else {
+          col$vals[dim_window(shape[ax], inner, start, len)]
+        }
+      },
+      scalar = rep(col$vals, len),
+      flat = column_to_r(py_to_r(conn@ptr$slice(
+        py_get_item(plan$flats, as.integer(col$flat)), start, stop))))
+  })
+  names(out) <- vapply(plan$cols, function(col) col$name, "")
+  list2DF(out, nrow = len)
+}
+
+## 1-based indices into a dimension's n values for rows [start,
+## start + len) of the C-order long form, where each value repeats
+## `inner` times per pass. Equivalent to ((row %/% inner) %% n) + 1 but
+## built with rep(): R's %/% and %% on doubles cost ~0.25 s per million
+## rows, this ~5 ms
+dim_window <- function(n, inner, start, len) {
+  if (len < 1) return(integer(0))
+  period <- n * inner
+  if (period <= len) {
+    ## the chunk spans whole periods: rotate one period, recycle it
+    p0 <- start %% period
+    pat <- rep(seq_len(n), each = inner)
+    if (p0 > 0) pat <- pat[c((p0 + 1):period, seq_len(p0))]
+    rep_len(pat, len)
+  } else {
+    ## the chunk sits inside about one period: one run per value touched
+    k <- seq(start %/% inner, (start + len - 1) %/% inner)
+    runs <- rep(inner, length(k))
+    runs[1L] <- min(inner - start %% inner, len)
+    if (length(k) > 1L) runs[length(k)] <- (start + len - 1) %% inner + 1
+    rep(as.integer(k %% n) + 1L, times = runs)
+  }
 }
 
 ## pandas DataFrame -> R data.frame, column by column. reticulate's
@@ -173,6 +244,60 @@ def _xrdbi_columns(df):
             col['levels'] = np.array([text(u) for u in uniques], dtype=object)
         out.append(col)
     return out
+)---"
+
+## plan for building a DataArray's long form in R (see plan_result):
+## returns (meta, flats) or None. meta['cols'] lists the output columns
+## in _xrdbi_render's order: kind 'dim' (1-D values in 'col', repeated
+## along 'axis'), 'scalar' (one value in 'col'), 'flat' (index into
+## flats: a C-order 1-D array, sliced per fetch by _xrdbi_slice)
+xrdbi_plan_py <- r"---(
+def _xrdbi_plan(obj):
+    import xarray as xr, numpy as np, pandas as pd
+    if not isinstance(obj, xr.DataArray) or obj.ndim == 0 or 0 in obj.shape:
+        return None
+    name = obj.name if obj.name is not None else 'value'
+    if name in obj.dims or name in obj.coords:
+        return None
+    if any(isinstance(ix, pd.MultiIndex) for ix in obj.indexes.values()):
+        return None
+
+    def one(nm, v):
+        return _xrdbi_columns(pd.DataFrame({nm: v}))[0]
+
+    dims = list(obj.dims)
+    cols, flats = [], []
+    for i, d in enumerate(dims):
+        # a dim without a coordinate gives 0..n-1, as to_dataframe does
+        cols.append({'name': d, 'kind': 'dim', 'axis': i,
+                     'col': one(d, obj[d].values)})
+    for c in obj.coords:
+        if c in dims:
+            continue
+        co = obj.coords[c]
+        if co.ndim == 0:
+            cols.append({'name': c, 'kind': 'scalar',
+                         'col': one(c, [co.values[()]])})
+        elif co.ndim == 1:
+            cols.append({'name': c, 'kind': 'dim',
+                         'axis': dims.index(co.dims[0]),
+                         'col': one(c, co.values)})
+        else:
+            flats.append(co.broadcast_like(obj).transpose(*dims)
+                         .values.reshape(-1))
+            cols.append({'name': c, 'kind': 'flat', 'flat': len(flats) - 1})
+    flats.append(np.asarray(obj.values).reshape(-1))
+    cols.append({'name': name, 'kind': 'flat', 'flat': len(flats) - 1})
+    return ({'shape': [int(s) for s in obj.shape], 'cols': cols}, flats)
+
+def _xrdbi_slice(flat, start, stop):
+    import pandas as pd
+    v = flat[int(start):int(stop)]
+    if v.dtype.kind in 'biu' or (v.dtype.kind == 'f' and v.dtype.itemsize >= 4):
+        # plain numbers need no pandas round trip
+        return {'name': 'x', 'kind': 'plain', 'na': None, 'tz': 'UTC',
+                'values': v}
+    return _xrdbi_columns(pd.DataFrame({'x': v}))[0]
 )---"
 
 xrdbi_hint_py <- paste(
