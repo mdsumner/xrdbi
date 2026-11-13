@@ -249,7 +249,7 @@ system.time({
   con <- dbConnect(xarray(), dsn, engine = "gdalxarray")
 })
 #>    user  system elapsed 
-#>   0.674   0.182   2.320
+#>   0.675   0.157   2.499
 
 con
 #> <XarrayConnection>
@@ -289,6 +289,68 @@ saw the new one). The rolling `oisst-mdim.vrt` always means “latest”;
 pin a dated sibling (`oisst-mdim-YYYYMMDD.vrt`) when you need a
 reproducible record. Icechunk makes this distinction first-class: a
 readonly session at a snapshot is an AS OF query.
+
+## Chunk maps
+
+`xr_chunks()` maps a variable’s storage chunks, or the chunks a
+selection touches, as a table: each chunk’s index range and coordinate
+extent along every dimension, how many of its cells the selection reads,
+and a rectangle over the two spatial dimensions with the CRS. Only
+coordinates are read. Chunk shapes come from what the backend records
+(zarr, netCDF, GDAL blocks via gdalxarray); `level = "shards"` maps the
+shards of a sharded zarr v3 array, and curvilinear grids get the
+envelope of each chunk’s 2-D longitude/latitude.
+
+A Sentinel-2 true-colour Cloud-Optimized GeoTIFF, one 10980 x 10980 UTM
+tile in 1024 x 1024 blocks:
+
+``` r
+cog <- "/vsicurl/https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/36/Q/WD/2020/7/S2A_36QWD_20200701_0_L2A/TCI.tif"
+con <- dbConnect(xarray(), cog, engine = "gdalxarray", multidim = FALSE)
+
+blocks <- xr_chunks(con, "ds.band_data.isel(band=0)")
+nrow(blocks)
+#> [1] 121
+table(blocks$cells)
+#> 
+#>  547600  757760 1048576 
+#>       1      20     100
+
+## a window: which blocks does reading it touch, and how much of each?
+win <- xr_chunks(con,
+  "ds.band_data.isel(band=0, y=slice(3000, 5500), x=slice(2500, 6000))")
+win[, c("y_chunk", "x_chunk", "y_start", "y_stop", "x_start", "x_stop",
+        "cells", "selected")] |> head()
+#>   y_chunk x_chunk y_start y_stop x_start x_stop   cells selected
+#> 1       2       2    2048   3072    2048   3072 1048576    41184
+#> 2       2       3    2048   3072    3072   4096 1048576    73728
+#> 3       2       4    2048   3072    4096   5120 1048576    73728
+#> 4       2       5    2048   3072    5120   6144 1048576    63360
+#> 5       3       2    3072   4096    2048   3072 1048576   585728
+#> 6       3       3    3072   4096    3072   4096 1048576  1048576
+nrow(win)
+#> [1] 16
+## the share of the cells in the touched blocks that the window uses
+sum(win$selected) / sum(win$cells)
+#> [1] 0.5215406
+```
+
+``` r
+used <- win$selected / win$cells
+plot(blocks$geometry, border = "grey60")
+plot(win$geometry, add = TRUE, border = "firebrick",
+     col = rgb(178, 34, 34, alpha = 255 * (0.15 + 0.6 * used),
+               maxColorValue = 255))
+```
+
+<img src="man/figures/README-chunk-map-1.png" alt="A Sentinel-2 tile's 11 by 11 grid of storage blocks, with the blocks a window touches shaded by the fraction of their cells the window reads"  />
+
+``` r
+dbDisconnect(con)
+```
+
+The touched blocks are shaded by how much of each the window uses: the
+interior blocks are read whole, the edge blocks partly.
 
 ## Connect forms
 
@@ -344,38 +406,36 @@ q <- xr_query(vars = "sst",
 q
 #> [1] "ds['sst'].sel(lat=slice(-56, -55), lon=slice(100, 101)).isel(time=0)"
 dbGetQuery(con, q) |> head(3)
-#>   zlev     lat     lon                time   sst
-#> 1    0 -55.875 100.125 1981-09-01 12:00:00 -0.06
-#> 2    0 -55.875 100.375 1981-09-01 12:00:00 -0.14
-#> 3    0 -55.875 100.625 1981-09-01 12:00:00 -0.17
+#> Error:
+#> ! connection is closed
 
 ## lazy send, paginated fetch
 res <- dbSendQuery(con, "ds.sst.isel(time=0)")
+#> Error:
+#> ! connection is closed
 dbFetch(res, n = 3)
-#>   zlev     lat   lon                time sst
-#> 1    0 -89.875 0.125 1981-09-01 12:00:00 NaN
-#> 2    0 -89.875 0.375 1981-09-01 12:00:00 NaN
-#> 3    0 -89.875 0.625 1981-09-01 12:00:00 NaN
+#> Error in `h()`:
+#> ! error in evaluating the argument 'res' in selecting a method for function 'dbFetch': object 'res' not found
 dbFetch(res, n = 3)
-#>   zlev     lat   lon                time sst
-#> 1    0 -89.875 0.875 1981-09-01 12:00:00 NaN
-#> 2    0 -89.875 1.125 1981-09-01 12:00:00 NaN
-#> 3    0 -89.875 1.375 1981-09-01 12:00:00 NaN
+#> Error in `h()`:
+#> ! error in evaluating the argument 'res' in selecting a method for function 'dbFetch': object 'res' not found
 dbClearResult(res)
+#> Error in `h()`:
+#> ! error in evaluating the argument 'res' in selecting a method for function 'dbClearResult': object 'res' not found
 
 ## whole-variable reads are guarded against accidental terabyte renderings;
 ## move the line with options(xrdbi.max_cells = ), or pass force = TRUE
 dbReadTable(con, "sst")
 #> Error:
-#> ! materializing 17,098,905,600 cells exceeds the guard (10,000,000); subset first, raise options(xrdbi.max_cells=), or use force = TRUE
+#> ! connection is closed
 
 ## drop down whenever the veneer is in the way
 ds <- xr_dataset(con)
+#> Error:
+#> ! connection is closed
 str(reticulate::py_to_r(ds$sst$attrs))
-#> List of 3
-#>  $ long_name: chr "Daily sea surface temperature"
-#>  $ valid_max: int 4500
-#>  $ valid_min: int -300
+#> Error:
+#> ! object 'ds' not found
 ```
 
 A result renders as the tidy long form, exactly as xarray’s

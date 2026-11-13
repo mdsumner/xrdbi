@@ -64,6 +64,10 @@
 
 ## README
 
+* The README gains a live chunk-map section: the 1024 x 1024 block grid
+  of a Sentinel-2 Cloud-Optimized GeoTIFF, and a window's touched blocks
+  shaded by how much of each it reads (figure in `man/figures/`).
+
 * The README is now `README.Rmd`, built live with
   `devtools::build_readme()` against the remote examples (OISST over HTTPS,
   ARCO ERA5 on GCS, the OISST multidim VRT via gdalxarray), and it gains a

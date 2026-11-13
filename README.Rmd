@@ -8,7 +8,8 @@ output: github_document
      in each section. -->
 
 ```{r, include = FALSE}
-knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>",
+                      fig.path = "man/figures/README-")
 ```
 
 # xrdbi
@@ -207,6 +208,50 @@ saw the new one). The rolling `oisst-mdim.vrt` always means "latest";
 pin a dated sibling (`oisst-mdim-YYYYMMDD.vrt`) when you need a
 reproducible record. Icechunk makes this distinction first-class: a
 readonly session at a snapshot is an AS OF query.
+
+## Chunk maps
+
+`xr_chunks()` maps a variable's storage chunks, or the chunks a
+selection touches, as a table: each chunk's index range and coordinate
+extent along every dimension, how many of its cells the selection
+reads, and a rectangle over the two spatial dimensions with the CRS.
+Only coordinates are read. Chunk shapes come from what the backend
+records (zarr, netCDF, GDAL blocks via gdalxarray); `level = "shards"`
+maps the shards of a sharded zarr v3 array, and curvilinear grids get
+the envelope of each chunk's 2-D longitude/latitude.
+
+A Sentinel-2 true-colour Cloud-Optimized GeoTIFF, one 10980 x 10980 UTM
+tile in 1024 x 1024 blocks:
+
+```{r chunks}
+cog <- "/vsicurl/https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/36/Q/WD/2020/7/S2A_36QWD_20200701_0_L2A/TCI.tif"
+con <- dbConnect(xarray(), cog, engine = "gdalxarray", multidim = FALSE)
+
+blocks <- xr_chunks(con, "ds.band_data.isel(band=0)")
+nrow(blocks)
+table(blocks$cells)
+
+## a window: which blocks does reading it touch, and how much of each?
+win <- xr_chunks(con,
+  "ds.band_data.isel(band=0, y=slice(3000, 5500), x=slice(2500, 6000))")
+win[, c("y_chunk", "x_chunk", "y_start", "y_stop", "x_start", "x_stop",
+        "cells", "selected")] |> head()
+nrow(win)
+## the share of the cells in the touched blocks that the window uses
+sum(win$selected) / sum(win$cells)
+```
+
+```{r chunk-map, fig.width = 6, fig.height = 6, fig.alt = "A Sentinel-2 tile's 11 by 11 grid of storage blocks, with the blocks a window touches shaded by the fraction of their cells the window reads"}
+used <- win$selected / win$cells
+plot(blocks$geometry, border = "grey60")
+plot(win$geometry, add = TRUE, border = "firebrick",
+     col = rgb(178, 34, 34, alpha = 255 * (0.15 + 0.6 * used),
+               maxColorValue = 255))
+dbDisconnect(con)
+```
+
+The touched blocks are shaded by how much of each the window uses: the
+interior blocks are read whole, the edge blocks partly.
 
 ## Connect forms
 
