@@ -1,4 +1,11 @@
+## Every test that touches Python starts here. skip_on_cran() must come
+## first: with no Python configured, py_module_available() initializes
+## reticulate, which provisions a uv environment from .onLoad's
+## py_require() (a download into the user cache) before it can answer.
+## Tests that need no Python (statement compilation, dim_window,
+## head_block, fit_names) still run on CRAN.
 skip_if_no_xarray <- function() {
+  skip_on_cran()
   skip_if_not(reticulate::py_module_available("xarray"),
               "python xarray not available")
   skip_if_not(reticulate::py_module_available("pandas"),

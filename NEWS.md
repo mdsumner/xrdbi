@@ -2,6 +2,14 @@
 
 # xrdbi (development)
 
+## CRAN preparation
+
+* Tests that need Python skip on CRAN. Checking for the Python modules
+  is itself what starts reticulate, which with no Python configured
+  provisions an environment from PyPI into the user cache. The tests
+  that need no Python (statement compilation, row windows, head blocks)
+  still run there.
+
 ## README
 
 * The README is now `README.Rmd`, built live with
