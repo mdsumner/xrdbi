@@ -156,6 +156,14 @@
 * A 0-d Dataset (every dim selected to one value) renders as one row; it
   errored in `to_dataframe()`.
 
+* `tbl()` filters on non-dimension coordinates (2-D `lat`/`lon` of a
+  curvilinear grid, a 1-D coordinate along `time`) narrow the read to the
+  index block holding every cell that passes, computed from the
+  coordinates at collect time; the pandas query still applies them
+  exactly inside the block. On a 40 x 60 grid a lat/lon box reads 507 of
+  7,200 cells. The collect guard counts the narrowed read, and the
+  preview's note no longer blames value filters for coordinate filters.
+
 * Strict bounds on a dimension in `tbl()` filters (`lat > 18`,
   `time < as.Date(...)`) no longer drop to a pandas `.query()`. The
   inclusive `.sel()` hull is trimmed with a boolean `.isel()` on the

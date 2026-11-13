@@ -302,3 +302,61 @@ test_that("strict dim bounds collect the same rows as filtering in R", {
 })
 
 
+
+## a curvilinear grid: index-only dims (y, x) with 2-D lon/lat, and a
+## 1-D non-dimension coordinate (lead) along time
+make_curvi_con <- function() {
+  DBI::dbConnect(xarray(), builder = function(xr) {
+    reticulate::py_run_string(paste(
+      "import xarray as _xr, numpy as _np, pandas as _pd",
+      "_Y, _X = _np.meshgrid(_np.arange(40.), _np.arange(60.), indexing='ij')",
+      "_cv = _xr.Dataset({'t': (('time', 'y', 'x'), _np.arange(3 * 40 * 60.).reshape(3, 40, 60))},",
+      "  coords={'time': _pd.date_range('2026-01-01', periods=3), 'lead': ('time', [0., 6., 12.]),",
+      "          'lon': (('y', 'x'), 100 + 0.5 * _X + 0.2 * _Y),",
+      "          'lat': (('y', 'x'), -60 + 0.4 * _Y - 0.1 * _X)})",
+      sep = "\n"), convert = FALSE)
+    reticulate::py_eval("_cv", convert = FALSE)
+  })
+}
+
+test_that("filters on 2-D coordinates narrow the read to their block", {
+  skip_if_no_xarray()
+  con <- make_curvi_con()
+  on.exit(DBI::dbDisconnect(con))
+  all <- as.data.frame(dplyr::collect(dplyr::tbl(con, "t")))
+  same <- function(x, keep) {
+    want <- all[keep, ]
+    rownames(want) <- NULL
+    expect_identical(as.data.frame(dplyr::collect(x)), want)
+  }
+
+  x <- dplyr::filter(dplyr::tbl(con, "t"), lat > -55, lat < -50, lon > 110, lon < 115)
+  ## the block is computed from the coordinates; coordinate-less dims are
+  ## pinned to absolute positions before narrowing
+  expect_match(tbl_statement(x), paste0(
+    "ds['t'].assign_coords(y=range(40), x=range(60)).isel(y=slice(17, 30), ",
+    "x=slice(10, 23)).pipe(_xrdbi_render).query("), fixed = TRUE)
+  same(x, all$lat > -55 & all$lat < -50 & all$lon > 110 & all$lon < 115)
+
+  ## a 1-D non-dimension coordinate narrows its own dim; with a value filter
+  x2 <- dplyr::filter(dplyr::tbl(con, "t"), lead >= 6, lat > -55, t > 5000)
+  expect_match(tbl_statement(x2), "time=slice(1, 3)", fixed = TRUE)
+  same(x2, all$lead >= 6 & all$lat > -55 & all$t > 5000)
+
+  ## membership, and a filter nothing passes
+  same(dplyr::filter(dplyr::tbl(con, "t"), lead %in% c(0, 12), lon < 101),
+       all$lead %in% c(0, 12) & all$lon < 101)
+  expect_equal(nrow(dplyr::collect(dplyr::filter(dplyr::tbl(con, "t"), lat > 100))), 0L)
+})
+
+test_that("the collect guard counts the coordinate block, not the grid", {
+  skip_if_no_xarray()
+  con <- make_curvi_con()
+  on.exit(DBI::dbDisconnect(con))
+  old <- options(xrdbi.max_cells = 1000)
+  on.exit(options(old), add = TRUE)
+  ## 3 x 40 x 60 = 7200 cells, but the block is 3 x 13 x 13 = 507
+  expect_error(dplyr::collect(dplyr::tbl(con, "t")), "7,200 cells")
+  x <- dplyr::filter(dplyr::tbl(con, "t"), lat > -55, lat < -50, lon > 110, lon < 115)
+  expect_equal(nrow(dplyr::collect(x)), 327L)
+})

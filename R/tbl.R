@@ -15,6 +15,14 @@
 #' * predicates on data variables, and mixed forms on one dimension, are
 #'   kept as a pandas `.query()` applied Python-side, before conversion
 #'   to R
+#' * predicates on non-dimension coordinates (2-D `lat`/`lon` of a
+#'   curvilinear grid, a 1-D coordinate along `time`) stay in that query
+#'   for exactness, but are checked against the coordinates at collect
+#'   time and the read narrowed to the index block holding every passing
+#'   cell (`.isel()` with literal slices, visible in `show_query()`).
+#'   Dimensions without coordinates are pinned to their positions first
+#'   (`.assign_coords(y=range(n))`), so they render as they would
+#'   unfiltered
 #' * without such a query, `head()` and `select()` apply in R to the
 #'   fetched rows, and `head(n)` first narrows the selection to the
 #'   leading block that holds its `n` rows, so a peek at a huge variable
@@ -111,10 +119,10 @@ collect_impl <- function(x, ...) {
   con <- x$con
   if (is.null(con)) stop("no connection on this tbl", call. = FALSE)
   cc <- tbl_compile(x, tbl_context(x))
-  ## size the guard on what will be read: the statement itself when it
-  ## stays an xarray object (strict trims and the head() block included),
-  ## else the hull the pandas stage starts from
-  sized <- if (cc$pandas) cc$hull else cc$statement
+  ## size the guard on what will be read: the xarray part of the
+  ## statement (strict trims, the coordinate block and the head() block
+  ## included), whatever a pandas stage does after
+  sized <- cc$xarray
   n <- py_to_r(import_builtins(convert = FALSE)$eval(
     paste0("float((", sized, ").size)"), tbl_scope(con)))  # see guard_cells
   max_cells <- getOption("xrdbi.max_cells", 1e7)
@@ -178,7 +186,7 @@ print.tbl_xarray <- function(x, ..., n = getOption("xrdbi.print_n", 6L)) {
       cat("  sizes : ", pv$sizes_line, "\n", sep = "")
       print(dplyr::as_tibble(pv$df), n = n)
       if (nrow(pv$df) == 0L && pv$residual) {
-        cat("# note: value filters removed all previewed cells;",
+        cat("# note: filters removed all previewed cells;",
             "the full result may still have rows\n")
       }
       TRUE
@@ -242,7 +250,17 @@ tbl_context <- function(x) {
   hull_dims <- intersect(unique(vapply(x$preds, `[[`, "", "var")), dims)
   descending <- hull_dims[vapply(hull_dims, dim_is_descending,
                                  logical(1), con = con)]
-  list(dims = dims, descending = descending)
+  list(dims = dims, descending = descending, coords = tbl_coords(con, x$var))
+}
+
+## a variable's non-dimension coordinates that have dimensions
+tbl_coords <- function(con, var) {
+  bt <- import_builtins(convert = FALSE)
+  out <- py_to_r(bt$eval(paste0(
+    "{c: list(v.coords[c].dims) for v in [ds[", py_repr_string(var), "]] ",
+    "for c in v.coords if c not in v.dims and v.coords[c].ndim >= 1}"),
+    tbl_scope(con)))
+  if (!length(out)) list() else out
 }
 
 ## compile against a live connection. Without a pandas stage, head(n)
@@ -251,15 +269,36 @@ tbl_context <- function(x) {
 tbl_compile <- function(x, ctx, clamp = NULL, block = TRUE) {
   sp <- split_preds(x, ctx$dims, ctx$descending)
   pandas <- tbl_needs_pandas(x, sp$residual)
+  cb <- coord_block(x, ctx, sp$residual)
   prefix <- NULL
   if (block && !pandas && !is.null(x$head_n)) {
-    base <- compile_tbl(x, ctx$dims, ctx$descending, clamp = clamp)
+    base <- compile_tbl(x, ctx$dims, ctx$descending, clamp = clamp,
+                        coord_block = cb)
     prefix <- head_block(unlist(tbl_sizes(x$con, base)), x$head_n)
   }
-  list(statement = compile_tbl(x, ctx$dims, ctx$descending, clamp = clamp,
-                               prefix = prefix),
-       hull = compile_tbl(x, ctx$dims, ctx$descending, stage = "hull"),
+  cmp <- function(stage) {
+    compile_tbl(x, ctx$dims, ctx$descending, stage = stage, clamp = clamp,
+                prefix = prefix, coord_block = cb)
+  }
+  list(statement = cmp("full"), xarray = cmp("xarray"), hull = cmp("hull"),
        pandas = pandas)
+}
+
+## Filters on non-dimension coordinates (2-D lat/lon of a curvilinear
+## grid, a 1-D coordinate along time) cannot be a .sel(), so they stay in
+## the pandas query; but the coordinates are checked here, at compile
+## time, and the selection narrowed to the index block holding every
+## cell that passes. Only coordinates are read. NULL when no such filter.
+coord_block <- function(x, ctx, residual) {
+  on_coord <- Filter(function(p) p$var %in% names(ctx$coords), residual)
+  if (!length(on_coord)) return(NULL)
+  con <- x$con
+  base <- compile_tbl(x, ctx$dims, ctx$descending, stage = "xarray")
+  obj <- import_builtins(convert = FALSE)$eval(base, tbl_scope(con))
+  preds <- lapply(on_coord, function(p) {
+    list(p$var, p$op, param_to_py(con, if (p$op == "%in%") I(p$value) else p$value))
+  })
+  py_to_r(con@ptr$coord_block(obj, preds))
 }
 
 ## head() and select() run python-side only after a pandas query (and
@@ -343,8 +382,14 @@ parse_predicate <- function(ex, env) {
 
 ## ---- compilation (pure: dims and descending are arguments) -----------
 
+## stage: "full" is the whole statement; "xarray" stops before any
+## pandas stage (what is read, so it sizes the collect guard); "hull" is
+## the inclusive .sel() superset alone. `coord_block` is list(block =
+## named c(start, stop) per dim, index = named sizes of coordinate-less
+## dims): the block holding every cell whose non-dimension coordinates
+## pass their filters (see coord_block())
 compile_tbl <- function(x, dims, descending, stage = "full", clamp = NULL,
-                        prefix = NULL) {
+                        prefix = NULL, coord_block = NULL) {
   sp <- split_preds(x, dims, descending)
 
   statement <- paste0("ds[", py_repr_string(x$var), "]")
@@ -352,10 +397,25 @@ compile_tbl <- function(x, dims, descending, stage = "full", clamp = NULL,
     statement <- paste0(statement, ".sel(",
                         paste(sp$sel_args, collapse = ", "), ")")
   }
-  ## the hull stage stays the inclusive superset (it sizes the guard)
-  if (length(sp$refine) && stage == "full") {
+  if (stage == "hull") return(statement)
+  if (length(sp$refine)) {
     statement <- paste0(statement, ".pipe(lambda a: a.isel(",
                         paste(sp$refine, collapse = ", "), "))")
+  }
+  if (length(coord_block$block)) {
+    ## pin positions on coordinate-less dims, so narrowing keeps them
+    if (length(coord_block$index)) {
+      statement <- paste0(statement, ".assign_coords(",
+        paste(sprintf("%s=range(%d)", names(coord_block$index),
+                      vapply(coord_block$index, as.integer, 1L)),
+              collapse = ", "), ")")
+    }
+    b <- coord_block$block
+    statement <- paste0(statement, ".isel(",
+      paste(sprintf("%s=slice(%d, %d)", names(b),
+                    vapply(b, function(v) as.integer(v[[1L]]), 1L),
+                    vapply(b, function(v) as.integer(v[[2L]]), 1L)),
+            collapse = ", "), ")")
   }
   for (block in list(clamp, prefix)) {
     if (!is.null(block)) {
@@ -485,3 +545,34 @@ dim_is_descending <- function(d, con) {
     error = function(e) FALSE)
   isTRUE(out)
 }
+
+## the index block holding every cell whose non-dimension coordinates
+## pass their filters: per dim, [first, last + 1) of the positions where
+## any cell passes; [0, 0) everywhere when none does. `index` lists the
+## block's dims that have no coordinate, with their sizes
+xrdbi_coord_block_py <- r"---(
+def _xrdbi_coord_block(obj, preds):
+    import numpy as np, operator
+    ops = {'<': operator.lt, '<=': operator.le, '>': operator.gt,
+           '>=': operator.ge, '==': operator.eq}
+    mask = None
+    for name, op, value in preds:
+        c = obj.coords[name]
+        m = c.isin(np.atleast_1d(value)) if op == '%in%' else ops[op](c, value)
+        # coordinates over different dims broadcast to their union
+        mask = m if mask is None else (mask & m)
+    block, index = {}, {}
+    if mask is None:
+        return {'block': block, 'index': index}
+    mask = mask.load()
+    for d in mask.dims:
+        other = [o for o in mask.dims if o != d]
+        hit = np.asarray(mask.any(dim=other).values if other else mask.values)
+        idx = np.flatnonzero(hit)
+        block[d] = [int(idx[0]), int(idx[-1]) + 1] if len(idx) else [0, 0]
+        if d not in obj.coords:
+            # a dim without a coordinate renders positions; narrowing it
+            # would renumber them, so it is given 0..n-1 first
+            index[d] = int(obj.sizes[d])
+    return {'block': block, 'index': index}
+)---"

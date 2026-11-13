@@ -124,6 +124,8 @@ setMethod("dbConnect", "XarrayDriver",
     ptr$columns <- reticulate::py_eval("_xrdbi_columns", convert = FALSE)
     reticulate::py_run_string(xrdbi_geometry_py)
     ptr$geometry <- reticulate::py_eval("_xrdbi_geometry", convert = FALSE)
+    reticulate::py_run_string(xrdbi_coord_block_py)
+    ptr$coord_block <- reticulate::py_eval("_xrdbi_coord_block", convert = FALSE)
     reticulate::py_run_string(xrdbi_chunks_py)
     ptr$chunks <- reticulate::py_eval("_xrdbi_chunks", convert = FALSE)
     reticulate::py_run_string(xrdbi_plan_py)

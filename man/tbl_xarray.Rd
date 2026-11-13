@@ -35,6 +35,14 @@ the result is still an xarray object
 \item predicates on data variables, and mixed forms on one dimension, are
 kept as a pandas \code{.query()} applied Python-side, before conversion
 to R
+\item predicates on non-dimension coordinates (2-D \code{lat}/\code{lon} of a
+curvilinear grid, a 1-D coordinate along \code{time}) stay in that query
+for exactness, but are checked against the coordinates at collect
+time and the read narrowed to the index block holding every passing
+cell (\code{.isel()} with literal slices, visible in \code{show_query()}).
+Dimensions without coordinates are pinned to their positions first
+(\code{.assign_coords(y=range(n))}), so they render as they would
+unfiltered
 \item without such a query, \code{head()} and \code{select()} apply in R to the
 fetched rows, and \code{head(n)} first narrows the selection to the
 leading block that holds its \code{n} rows, so a peek at a huge variable
