@@ -42,7 +42,8 @@ setMethod("show", "XarrayConnection", function(object) {
   dims <- paste(sprintf("%s: %s", names(info$sizes), unlist(info$sizes)),
                 collapse = ", ")
   cat("  dims: ", dims, "\n", sep = "")
-  cat("  vars: ", paste(info$tables, collapse = ", "), "\n", sep = "")
+  cat("  vars: ", fit_names(info$tables, getOption("width", 80) - 8), "\n",
+      sep = "")
 })
 
 #' @export

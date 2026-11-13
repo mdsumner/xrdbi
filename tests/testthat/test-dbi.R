@@ -24,6 +24,17 @@ test_that("connect, info, disconnect", {
   expect_error(DBI::dbListTables(con), "closed")
 })
 
+test_that("the connection prints a long variable list cut to width", {
+  long <- sprintf("variable_number_%03d", 1:277)
+  line <- fit_names(long, 72)
+  expect_lte(nchar(line), 72)
+  expect_match(line, "^variable_number_001, variable_number_002, ")
+  expect_match(line, ", \\.\\.\\. \\(277 total\\)$")
+  expect_identical(fit_names(c("sst", "ice"), 72), "sst, ice")
+  ## a single name longer than the width still shows
+  expect_match(fit_names(c(strrep("x", 100), "y"), 40), "^x+, \\.\\.\\. \\(2 total\\)$")
+})
+
 test_that("coordinates are tables too", {
   skip_if_no_xarray()
   con <- make_con()

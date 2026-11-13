@@ -100,14 +100,14 @@ collect_impl <- function(x, ...) {
   ## else the hull the pandas stage starts from
   sized <- if (cc$pandas) cc$hull else cc$statement
   n <- py_to_r(import_builtins(convert = FALSE)$eval(
-    paste0("int((", sized, ").size)"), tbl_scope(con)))
+    paste0("float((", sized, ").size)"), tbl_scope(con)))  # see guard_cells
   max_cells <- getOption("xrdbi.max_cells", 1e7)
   if (n > max_cells && !isTRUE(list(...)$force)) {
     stop(sprintf(paste0(
       "collect would materialize %s cells; constrain more dimensions ",
       "(e.g. a time range), raise options(xrdbi.max_cells=), or ",
       "collect(force = TRUE)"),
-      format(n, big.mark = ",")), call. = FALSE)
+      fmt_count(n)), call. = FALSE)
   }
   run_tbl(con, cc, x)
 }
@@ -255,9 +255,12 @@ tbl_needs_pandas <- function(x, residual) {
 ## the steps R applies after the fetch, as dplyr text for show_query()
 tbl_r_steps <- function(x, pandas) {
   if (pandas) return(character(0))
+  ## backtick names R can't parse bare, e.g. `2m_temperature`
+  cols <- ifelse(make.names(x$cols) == x$cols, x$cols,
+                 paste0("`", x$cols, "`"))
   steps <- c(if (!is.null(x$head_n)) sprintf("head(%d)", x$head_n),
              if (!is.null(x$cols)) sprintf("select(%s)",
-                                           paste(x$cols, collapse = ", ")))
+                                           paste(cols, collapse = ", ")))
   if (!length(steps)) return(character(0))
   paste(steps, collapse = " |> ")
 }

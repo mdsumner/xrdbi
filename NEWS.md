@@ -2,6 +2,22 @@
 
 # xrdbi (development)
 
+## Fixes
+
+* The cell guard never fired above 2^31 cells, so it missed exactly the
+  reads it exists to stop. reticulate converts a Python int that large
+  into a wrapped R integer (2^31 became `NA`, 17 billion became
+  -179,869,184), so `dbReadTable(con, "sst")` on the full OISST record
+  started rendering 17 billion cells instead of erroring. Sizes now cross
+  as doubles, in `dbFetch()`, `dbReadTable()` and `collect()`, and guard
+  messages print counts in full.
+
+* Printing a connection cuts the variable list to the console width,
+  with a total (ERA5 has 273 data variables).
+
+* `show_query()` backticks non-syntactic names in the R steps line, so it
+  is valid R.
+
 ## Faster, type-faithful conversion to R
 
 * `dbFetch()`, `dbGetQuery()`, `dbReadTable()` and `collect()` now convert the

@@ -118,6 +118,28 @@ test_that("the cell guard counts a Dataset's long form", {
                60L)
 })
 
+test_that("the guard fires above 2^31 cells", {
+  skip_if_no_xarray()
+  ## a zero-stride view: 2e10 cells that cost no memory
+  con <- DBI::dbConnect(xarray(), builder = function(xr) {
+    reticulate::py_run_string(paste(
+      "import xarray as _xr, numpy as _np",
+      "_big = _xr.Dataset({'v': (('y', 'x'),",
+      "  _np.broadcast_to(_np.float32(0), (200000, 100000)))})",
+      sep = "\n"), convert = FALSE)
+    reticulate::py_eval("_big", convert = FALSE)
+  })
+  on.exit(DBI::dbDisconnect(con))
+  ## REGRESSION: reticulate wrapped the int size into a negative R
+  ## integer, so the guard passed and the fetch tried to render it all
+  expect_error(DBI::dbGetQuery(con, "ds.v"), "20,000,000,000 cells")
+  expect_error(DBI::dbReadTable(con, "v"), "20,000,000,000 cells")
+  expect_error(DBI::dbGetQuery(con, "ds"), "20,000,000,000 cells")
+  expect_error(dplyr::collect(dplyr::tbl(con, "v")), "20,000,000,000 cells")
+  ## and a head() still reads only its block
+  expect_equal(nrow(dplyr::collect(utils::head(dplyr::tbl(con, "v"), 3))), 3L)
+})
+
 test_that("shapes the plan declines still render", {
   skip_if_no_xarray()
   con <- make_con()

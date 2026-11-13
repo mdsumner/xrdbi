@@ -9,17 +9,34 @@ guard_cells <- function(obj, max_cells, force) {
       rows <- prod(as.numeric(unlist(py_to_r(bt$list(obj$sizes$values())))))
       rows * max(1, py_to_r(bt$len(obj$data_vars)))
     } else {
-      py_to_r(bt$int(obj$size))
+      ## float, not int: reticulate wraps a Python int above 2^31 into an
+      ## R integer (2^31 -> NA, 1.7e10 -> negative), which disarmed the
+      ## guard for exactly the reads it exists to stop
+      py_to_r(bt$float(obj$size))
     }
   }, error = function(e) NA)
   if (!is.na(n) && is.finite(max_cells) && n > max_cells) {
     stop(sprintf(paste0(
       "materializing %s cells exceeds the guard (%s); ",
       "subset first, raise options(xrdbi.max_cells=), or use force = TRUE"),
-      format(n, big.mark = ","), format(max_cells, big.mark = ",")),
+      fmt_count(n), fmt_count(max_cells)),
       call. = FALSE)
   }
   invisible(NULL)
+}
+
+## names joined by ", ", cut to fit `width` with a total (ERA5 has 277)
+fit_names <- function(x, width) {
+  line <- paste(x, collapse = ", ")
+  if (nchar(line) <= width) return(line)
+  tail <- sprintf(", ... (%d total)", length(x))
+  fits <- sum(cumsum(nchar(x) + 2L) - 2L <= width - nchar(tail))
+  paste0(paste(x[seq_len(max(1L, fits))], collapse = ", "), tail)
+}
+
+## 20000000000 -> "20,000,000,000" (format() alone goes scientific)
+fmt_count <- function(n) {
+  format(n, big.mark = ",", scientific = FALSE, trim = TRUE)
 }
 
 ## the rendering: tidy long form, one row per cell

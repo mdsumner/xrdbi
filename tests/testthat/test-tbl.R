@@ -98,6 +98,11 @@ test_that("select and head stay R-side unless a value filter needs pandas", {
                "head(7) |> select(time, lat, sst)")
   expect_output(dplyr::show_query(x),
                 "# then in R: head(7) |> select(time, lat, sst)", fixed = TRUE)
+  ## non-syntactic names are backticked so the line is valid R
+  x2 <- dplyr::select(utils::head(shell("2m_temperature"), 3), time,
+                      `2m_temperature`)
+  expect_equal(xrdbi:::tbl_r_steps(x2, pandas = FALSE),
+               "head(3) |> select(time, `2m_temperature`)")
 
   ## a value filter must run before head(), so all three go python-side
   x <- dplyr::select(utils::head(dplyr::filter(shell(), sst > 10), 7),
