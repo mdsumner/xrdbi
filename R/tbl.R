@@ -9,9 +9,12 @@
 #' Predicate handling is pushdown-with-residuals:
 #' * dimension-coordinate predicates compile to an inclusive `.sel()`
 #'   hull, so only the chunks the slab touches are read
-#' * anything the hull cannot express exactly (strict inequalities,
-#'   predicates on data variables) is kept as a pandas `.query()`
-#'   applied Python-side, before conversion to R
+#' * strict inequalities on a dimension use the inclusive hull, then a
+#'   boolean `.isel()` on that dimension's index trims the boundary, so
+#'   the result is still an xarray object
+#' * predicates on data variables, and mixed forms on one dimension, are
+#'   kept as a pandas `.query()` applied Python-side, before conversion
+#'   to R
 #' * at collect time each hull dimension is asked for its direction,
 #'   and the slice is oriented to match: `filter(latitude > 18,
 #'   latitude < 19)` works identically on ascending and DESCENDING
@@ -238,6 +241,7 @@ compile_tbl <- function(x, dims, descending, stage = "full", clamp = NULL) {
     intersect(names(vars_by), dims)
 
   sel_args <- character(0)
+  refine <- character(0)
   residual <- list()
 
   for (nm in names(vars_by)) {
@@ -272,9 +276,17 @@ compile_tbl <- function(x, dims, descending, stage = "full", clamp = NULL) {
       bounds <- if (nm %in% descending) c(hi_lit, lo_lit) else c(lo_lit, hi_lit)
       sel_args <- c(sel_args,
                     paste0(nm, "=slice(", bounds[1L], ", ", bounds[2L], ")"))
-      ## strict bounds over-fetch the boundary cell; refine python-side
+      ## strict bounds over-fetch the boundary cell; trim it with a
+      ## boolean isel on the dimension's index (pandas comparison, the
+      ## same semantics as a query, so date strings keep their meaning)
+      ## and the result stays a DataArray
       strict <- Filter(function(p) p$op %in% c(">", "<"), rng)
-      residual <- c(residual, strict)
+      if (length(strict)) {
+        idx <- paste0("a.indexes[", py_repr_string(nm), "]")
+        refine <- c(refine, paste0(nm, "=", paste(vapply(strict, function(p) {
+          paste0("(", idx, " ", p$op, " ", py_literal(p$value), ")")
+        }, ""), collapse = " & ")))
+      }
     } else {
       ## mixed forms on one dimension: no pushdown, all residual
       residual <- c(residual, ps)
@@ -285,6 +297,11 @@ compile_tbl <- function(x, dims, descending, stage = "full", clamp = NULL) {
   if (length(sel_args)) {
     statement <- paste0(statement, ".sel(", paste(sel_args, collapse = ", "),
                         ")")
+  }
+  ## the hull stage stays the inclusive superset (it sizes the guard)
+  if (length(refine) && stage == "full") {
+    statement <- paste0(statement, ".pipe(lambda a: a.isel(",
+                        paste(refine, collapse = ", "), "))")
   }
   if (!is.null(clamp)) {
     statement <- paste0(statement, ".isel(",

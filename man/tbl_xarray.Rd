@@ -26,9 +26,12 @@ Predicate handling is pushdown-with-residuals:
 \itemize{
 \item dimension-coordinate predicates compile to an inclusive \code{.sel()}
 hull, so only the chunks the slab touches are read
-\item anything the hull cannot express exactly (strict inequalities,
-predicates on data variables) is kept as a pandas \code{.query()}
-applied Python-side, before conversion to R
+\item strict inequalities on a dimension use the inclusive hull, then a
+boolean \code{.isel()} on that dimension's index trims the boundary, so
+the result is still an xarray object
+\item predicates on data variables, and mixed forms on one dimension, are
+kept as a pandas \code{.query()} applied Python-side, before conversion
+to R
 \item at collect time each hull dimension is asked for its direction,
 and the slice is oriented to match: \code{filter(latitude > 18, latitude < 19)} works identically on ascending and DESCENDING
 coordinates

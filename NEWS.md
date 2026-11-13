@@ -27,6 +27,15 @@
   pandas render. Datasets, 0-d and empty results, MultiIndex coordinates
   and pandas-stage statements still go through the pandas render.
 
+* Strict bounds on a dimension in `tbl()` filters (`lat > 18`,
+  `time < as.Date(...)`) no longer drop to a pandas `.query()`. The
+  inclusive `.sel()` hull is trimmed with a boolean `.isel()` on the
+  dimension's index, which uses the same pandas comparison as the query, so
+  date strings keep their meaning. The statement stays a DataArray and takes
+  the R-built path: 4.8M rows collect in 0.43 s instead of 1.16 s, with
+  identical output. Filters on data variables, `select()` and `head()` still
+  use the pandas stage.
+
 * Datetimes without a zone now carry `tzone = "UTC"`, so they display as the
   instant the source means regardless of the session zone. Timezone-aware
   datetimes keep their zone.

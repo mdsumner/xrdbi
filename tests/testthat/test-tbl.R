@@ -26,16 +26,28 @@ test_that("descending dims get an oriented slice", {
     compile1(x, dims = c("latitude", "longitude"),
              descending = "latitude"),
     paste0("ds['u'].sel(latitude=slice(19, 18))",
-           ".pipe(_xrdbi_render)",
-           ".query('`latitude` > 18 and `latitude` < 19')"))
+           ".pipe(lambda a: a.isel(latitude=(a.indexes['latitude'] > 18)",
+           " & (a.indexes['latitude'] < 19)))"))
 })
 
-test_that("strict bounds push the hull and keep a residual", {
+test_that("strict bounds push the hull and trim it on the index", {
   x <- dplyr::filter(shell(), lat > -80, lat <= -70)
   expect_equal(
     compile1(x, dims = c("time", "lat", "lon")),
     paste0("ds['sst'].sel(lat=slice(-80, -70))",
-           ".pipe(_xrdbi_render).query('`lat` > -80')"))
+           ".pipe(lambda a: a.isel(lat=(a.indexes['lat'] > -80)))"))
+
+  ## strict on two dims, the hull stage without the trim
+  x <- dplyr::filter(shell(), lat > -80, lon < 30)
+  expect_equal(
+    compile1(x, dims = c("time", "lat", "lon")),
+    paste0("ds['sst'].sel(lat=slice(-80, None), lon=slice(None, 30))",
+           ".pipe(lambda a: a.isel(lat=(a.indexes['lat'] > -80), ",
+           "lon=(a.indexes['lon'] < 30)))"))
+  expect_equal(
+    xrdbi:::compile_tbl(x, dims = c("time", "lat", "lon"),
+                        descending = character(), stage = "hull"),
+    "ds['sst'].sel(lat=slice(-80, None), lon=slice(None, 30))")
 })
 
 test_that("equality and membership are exact pushdowns", {
@@ -174,6 +186,37 @@ test_that("show_query prints the compiled python", {
     compile_tbl(x2, dims = c("time", "lat", "lon"),
                 descending = character()),
     ".query(", fixed = TRUE)
+})
+
+test_that("strict dim bounds collect the same rows as filtering in R", {
+  skip_if_no_xarray()
+  con <- make_con()
+  on.exit(DBI::dbDisconnect(con))
+  all <- DBI::dbReadTable(con, "sst")
+  ## lat is -80, -73.3, -66.7, -60; lon is 0, 10, 20, 30, 40; time daily
+  ## from 2026-01-01; each bound lands exactly on a coordinate value
+  x <- dplyr::filter(dplyr::tbl(con, "sst"), lat > -80, lat < -60,
+                     lon > 10, time < as.Date("2026-01-03"))
+  got <- as.data.frame(dplyr::collect(x))
+  want <- all[all$lat > -80 & all$lat < -60 & all$lon > 10 &
+                all$time < as.POSIXct("2026-01-03", tz = "UTC"), ]
+  rownames(want) <- NULL
+  expect_equal(nrow(got), 2L * 2L * 3L)
+  expect_identical(got, want)
+
+  ## the statement stays an xarray object, so it takes the R-built path
+  stmt <- tbl_statement(x)
+  expect_false(grepl("_xrdbi_render", stmt, fixed = TRUE))
+  res <- DBI::dbSendQuery(con, stmt)
+  on.exit(DBI::dbClearResult(res), add = TRUE)
+  expect_false(is.null(plan_result(con, res@ptr$obj)))
+
+  ## descending coordinate
+  dcon <- make_desc_con()
+  on.exit(DBI::dbDisconnect(dcon), add = TRUE)
+  d <- as.data.frame(dplyr::collect(
+    dplyr::filter(dplyr::tbl(dcon, "u"), latitude > 60, latitude < 90)))
+  expect_identical(sort(unique(d$latitude)), c(70, 80))
 })
 
 
