@@ -14,6 +14,9 @@
 
 \item{...}{unused}
 }
+\value{
+a lazy \code{tbl_xarray}; \code{\link[dplyr:collect]{dplyr::collect()}} returns a tibble
+}
 \description{
 \code{tbl(con, name)} returns a lazy object in the dtplyr/duckplyr mould:
 dplyr verbs accumulate a spec, nothing touches Python until
@@ -39,5 +42,21 @@ reads one corner; \code{\link[dplyr:show_query]{dplyr::show_query()}} lists thes
 \item at collect time each hull dimension is asked for its direction,
 and the slice is oriented to match: \code{filter(latitude > 18, latitude < 19)} works identically on ascending and DESCENDING
 coordinates
+}
+}
+\examples{
+\dontrun{
+## needs a Python environment with xarray (and here zarr, gcsfs)
+library(dplyr)
+con <- dbConnect(xarray(),
+  "gs://gcp-public-data-arco-era5/ar/full_37-1h-0p25deg-chunk-1.zarr-v3",
+  engine = "zarr", storage_options = reticulate::dict(token = "anon"))
+u <- tbl(con, "100m_u_component_of_wind") |>
+  filter(latitude > 18, latitude < 19, longitude >= 73, longitude <= 74,
+         time >= as.POSIXct("1980-01-01", tz = "UTC"),
+         time < as.POSIXct("1980-01-02", tz = "UTC"))
+show_query(u)
+collect(u)
+tbl(con, "2m_temperature") |> head(3) |> collect()
 }
 }

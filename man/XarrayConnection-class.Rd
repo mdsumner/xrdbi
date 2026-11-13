@@ -3,11 +3,88 @@
 \docType{class}
 \name{XarrayConnection-class}
 \alias{XarrayConnection-class}
+\alias{show,XarrayConnection-method}
+\alias{dbIsValid,XarrayConnection-method}
+\alias{dbDisconnect,XarrayConnection-method}
+\alias{dbGetInfo,XarrayConnection-method}
+\alias{dbListTables,XarrayConnection-method}
+\alias{dbExistsTable,XarrayConnection,character-method}
+\alias{dbListFields,XarrayConnection,character-method}
+\alias{dbBegin,XarrayConnection-method}
+\alias{dbCommit,XarrayConnection-method}
+\alias{dbRollback,XarrayConnection-method}
+\alias{dbDataType,XarrayConnection-method}
+\alias{dbQuoteIdentifier,XarrayConnection,character-method}
+\alias{dbQuoteString,XarrayConnection,character-method}
 \title{Xarray connection}
+\usage{
+\S4method{show}{XarrayConnection}(object)
+
+\S4method{dbIsValid}{XarrayConnection}(dbObj, ...)
+
+\S4method{dbDisconnect}{XarrayConnection}(conn, ...)
+
+\S4method{dbGetInfo}{XarrayConnection}(dbObj, ...)
+
+\S4method{dbListTables}{XarrayConnection}(conn, ...)
+
+\S4method{dbExistsTable}{XarrayConnection,character}(conn, name, ...)
+
+\S4method{dbListFields}{XarrayConnection,character}(conn, name, ...)
+
+\S4method{dbBegin}{XarrayConnection}(conn, ...)
+
+\S4method{dbCommit}{XarrayConnection}(conn, ...)
+
+\S4method{dbRollback}{XarrayConnection}(conn, ...)
+
+\S4method{dbDataType}{XarrayConnection}(dbObj, obj, ...)
+
+\S4method{dbQuoteIdentifier}{XarrayConnection,character}(conn, x, ...)
+
+\S4method{dbQuoteString}{XarrayConnection,character}(conn, x, ...)
+}
+\arguments{
+\item{object, dbObj, conn}{an XarrayConnection}
+
+\item{...}{unused}
+
+\item{name}{a variable name}
+
+\item{obj}{an R object, for \code{dbDataType()}}
+
+\item{x}{character vector to quote}
+}
+\value{
+\itemize{
+\item \code{show()}: called for its output (source, dims, data variables)
+\item \code{dbIsValid()}: \code{TRUE} while the connection is open
+\item \code{dbDisconnect()}: \code{TRUE}, invisibly
+\item \code{dbGetInfo()}: a list with \code{dbname}, \code{db.version} (the xarray
+version), \code{tables} (data variables) and \code{sizes} (dims)
+\item \code{dbListTables()}: character, every variable (coordinates included)
+\item \code{dbExistsTable()}: logical
+\item \code{dbListFields()}: character, dims, then non-dimension coordinates,
+then the variable
+\item \code{dbDataType()}: character, the numpy dtype an R vector maps to
+\item \code{dbQuoteIdentifier()}, \code{dbQuoteString()}: \code{\link[DBI:SQL]{DBI::SQL()}} holding
+Python source (\code{ds['name']}, \code{'text'})
+\item \code{dbBegin()}, \code{dbCommit()}, \code{dbRollback()}: no return, they error
+}
+}
 \description{
-Tables are data variables. Fields are dimensions, then non-dimension
-coordinates, then the variable itself. The Python object is reachable
-at any time via \code{\link[=xr_dataset]{xr_dataset()}}; this connection is a veneer, not a jail.
+Tables are variables (data variables and coordinates alike). Fields are
+dimensions, then non-dimension coordinates, then the variable itself.
+The Python object is reachable at any time via \code{\link[=xr_dataset]{xr_dataset()}}; this
+connection is a veneer, not a jail. Create one with
+\link[=dbConnect,XarrayDriver-method]{dbConnect()}; queries are documented
+with \link[=XarrayResult-class]{XarrayResult}, whole variables with
+\link[=dbReadTable,XarrayConnection,character-method]{dbReadTable()}.
+}
+\details{
+Transactions (\code{dbBegin()}, \code{dbCommit()}, \code{dbRollback()}) are not
+implemented and error; the intended mapping is icechunk sessions and
+commits.
 }
 \section{Slots}{
 
@@ -17,3 +94,14 @@ at any time via \code{\link[=xr_dataset]{xr_dataset()}}; this connection is a ve
 \item{\code{dsn}}{the source string if the connection was opened from one}
 }}
 
+\examples{
+\dontrun{
+## needs a Python environment with xarray (and here h5netcdf)
+con <- dbConnect(xarray(), "oisst.nc", engine = "h5netcdf")
+con
+dbListTables(con)
+dbListFields(con, "sst")
+dbGetInfo(con)$sizes
+dbDisconnect(con)
+}
+}

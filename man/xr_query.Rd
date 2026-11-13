@@ -42,5 +42,4 @@ The compiled expression is the contract; inspect it.
 }
 \examples{
 xr_query(vars = "sst", sel = list(lat = c(-80, -60)), isel = list(time = 0))
-# "ds[['sst']].sel(lat=slice(-80, -60)).isel(time=0)"
 }

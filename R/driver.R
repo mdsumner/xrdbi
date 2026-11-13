@@ -1,13 +1,24 @@
 #' xarray DBI driver
 #'
 #' Use with [DBI::dbConnect()] to open a connection to an xarray object in
-#' a live Python session managed by reticulate.
+#' a live Python session managed by reticulate (see
+#' [dbConnect()][dbConnect,XarrayDriver-method]).
 #'
+#' @param object,drv,dbObj an XarrayDriver
+#' @param obj an R object, for `dbDataType()`
+#' @param ... unused
+#' @return `xarray()`: an XarrayDriver. `dbDataType()`: character, the
+#'   numpy dtype an R vector maps to. `dbUnloadDriver()`: `TRUE`,
+#'   invisibly. `show()`: called for its output.
 #' @export
 #' @importFrom methods new
 #' @examples
+#' drv <- xarray()
+#' drv
+#' dbDataType(drv, Sys.Date())
 #' \dontrun{
-#' con <- dbConnect(xarray(), "https://example.com/oisst.zarr", open = "open_zarr")
+#' ## needs a Python environment with xarray (and here zarr)
+#' con <- dbConnect(drv, "https://example.com/oisst.zarr", open = "open_zarr")
 #' }
 xarray <- function() {
   new("XarrayDriver")
@@ -60,6 +71,21 @@ setMethod("dbDataType", "XarrayDriver", function(dbObj, obj, ...) {
 #' @param open name of the xarray open function, default "open_dataset"
 #' @param builder function taking the xarray module, returning a Dataset
 #' @param object an existing Python xarray object to adopt
+#' @return an [XarrayConnection][XarrayConnection-class]
+#' @examples
+#' \dontrun{
+#' ## needs a Python environment with xarray and the engine named
+#' con <- dbConnect(xarray(), "oisst.nc", engine = "h5netcdf")
+#'
+#' ## anything that takes more than one call
+#' con <- dbConnect(xarray(), builder = function(xr) {
+#'   xr$open_mfdataset(c("a.nc", "b.nc"), engine = "h5netcdf")
+#' })
+#'
+#' ## an object already built in the session
+#' reticulate::py_run_string("import xarray; myds = xarray.Dataset()")
+#' con <- dbConnect(xarray(), object = reticulate::py_eval("myds", convert = FALSE))
+#' }
 #' @export
 #' @importFrom reticulate import r_to_py
 setMethod("dbConnect", "XarrayDriver",

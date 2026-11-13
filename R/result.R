@@ -4,12 +4,50 @@
 #' and `xr` (the module) in scope. Evaluation at [DBI::dbSendQuery()] is
 #' lazy in the xarray sense: it builds the selection graph, moves no
 #' bytes. Rendering to the tidy data frame happens at the first
-#' [DBI::dbFetch()].
+#' [DBI::dbFetch()]: one row per cell, every coordinate as a column,
+#' exactly as xarray's `to_dataframe().reset_index()` gives it.
+#' [DBI::dbGetQuery()] is the two in one step.
 #'
+#' The first fetch is guarded: an xarray result above `max_cells` cells
+#' errors unless `force = TRUE` (see `options(xrdbi.max_cells = )`).
+#' Later fetches page through the same rows.
+#'
+#' @slot ptr environment holding the evaluated Python object and the
+#'   fetch state
+#' @slot statement the Python expression
+#' @param conn an XarrayConnection
+#' @param statement a Python expression over `ds` (and `xr`)
+#' @param object,dbObj,res an XarrayResult
+#' @param n number of rows to fetch, `-1` for all remaining
+#' @param max_cells guard threshold for the first fetch, default
+#'   `getOption("xrdbi.max_cells", 1e7)`
+#' @param force bypass the guard
+#' @param ... unused
+#' @return
+#' * `dbSendQuery()`: an XarrayResult
+#' * `dbFetch()`: a data frame of the next `n` rows
+#' * `dbHasCompleted()`, `dbIsValid()`: logical
+#' * `dbGetRowCount()`: the number of rows fetched so far
+#' * `dbGetStatement()`: the statement
+#' * `dbClearResult()`: `TRUE`, invisibly
+#' * `show()`: called for its output
+#' @examples
+#' \dontrun{
+#' ## needs a Python environment with xarray (and here h5netcdf)
+#' con <- dbConnect(xarray(), "oisst.nc", engine = "h5netcdf")
+#' res <- dbSendQuery(con, "ds.sst.isel(time=0)")
+#' dbFetch(res, n = 5)
+#' dbFetch(res, n = 5)
+#' dbGetRowCount(res)
+#' dbClearResult(res)
+#'
+#' dbGetQuery(con, "ds.sst.sel(lat=slice(-56, -55), lon=slice(100, 101))")
+#' }
 #' @export
 setClass("XarrayResult", contains = "DBIResult",
   slots = list(ptr = "environment", statement = "character"))
 
+#' @rdname XarrayResult-class
 #' @export
 #' @importFrom reticulate py_dict
 setMethod("dbSendQuery", signature("XarrayConnection", "character"),
@@ -35,6 +73,7 @@ setMethod("dbSendQuery", signature("XarrayConnection", "character"),
     new("XarrayResult", ptr = ptr, statement = statement)
   })
 
+#' @rdname XarrayResult-class
 #' @export
 setMethod("show", "XarrayResult", function(object) {
   cat("<XarrayResult>\n")
@@ -42,12 +81,14 @@ setMethod("show", "XarrayResult", function(object) {
   if (!isTRUE(object@ptr$valid)) cat("  CLEARED\n")
 })
 
+#' @rdname XarrayResult-class
 #' @export
 #' @import DBI
 setMethod("dbIsValid", "XarrayResult", function(dbObj, ...) {
   isTRUE(dbObj@ptr$valid)
 })
 
+#' @rdname XarrayResult-class
 #' @export
 setMethod("dbGetStatement", "XarrayResult", function(res, ...) {
   res@statement
@@ -82,6 +123,7 @@ render_result <- function(res, max_cells, force) {
   }
   invisible(NULL)
 }
+#' @rdname XarrayResult-class
 #' @export
 setMethod("dbFetch", "XarrayResult",
   function(res, n = -1, ...,
@@ -102,6 +144,7 @@ setMethod("dbFetch", "XarrayResult",
     frame_to_r(ptr$conn, chunk)
   })
 
+#' @rdname XarrayResult-class
 #' @export
 setMethod("dbHasCompleted", "XarrayResult", function(res, ...) {
   ptr <- res@ptr
@@ -110,12 +153,14 @@ setMethod("dbHasCompleted", "XarrayResult", function(res, ...) {
   ptr$cursor >= ptr$nrow
 })
 
+#' @rdname XarrayResult-class
 #' @export
 setMethod("dbGetRowCount", "XarrayResult", function(res, ...) {
   cur <- res@ptr$cursor
   if (is.null(cur)) 0L else as.integer(cur)
 })
 
+#' @rdname XarrayResult-class
 #' @export
 setMethod("dbClearResult", "XarrayResult", function(res, ...) {
   res@ptr$obj <- NULL

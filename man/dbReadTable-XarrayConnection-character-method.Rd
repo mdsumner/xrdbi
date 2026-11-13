@@ -15,15 +15,29 @@
 \arguments{
 \item{conn}{an XarrayConnection}
 
-\item{name}{a data variable name}
+\item{name}{a variable name}
+
+\item{...}{unused}
 
 \item{max_cells}{guard threshold, default \code{getOption("xrdbi.max_cells", 1e7)}}
 
 \item{force}{bypass the guard}
 }
+\value{
+a data frame, one row per cell of the variable
+}
 \description{
-The rendering is \verb{ds[name].to_dataframe().reset_index()}: one row per
-cell, dimension coordinates as columns. This materializes the variable,
-so it is guarded: reads above \code{max_cells} cells error unless
-\code{force = TRUE}. Set \code{options(xrdbi.max_cells = )} to taste.
+The rendering is the tidy long form of \code{ds[name]}, exactly as
+\verb{to_dataframe().reset_index()} gives it: one row per cell, every
+coordinate as a column. This materializes the variable, so it is
+guarded: reads above \code{max_cells} cells error unless \code{force = TRUE}.
+Set \code{options(xrdbi.max_cells = )} to taste.
+}
+\examples{
+\dontrun{
+## needs a Python environment with xarray (and here h5netcdf)
+con <- dbConnect(xarray(), "oisst.nc", engine = "h5netcdf")
+dbReadTable(con, "lat")
+dbReadTable(con, "sst", max_cells = 2e6)
+}
 }

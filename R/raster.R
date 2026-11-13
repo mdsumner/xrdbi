@@ -26,6 +26,17 @@
 #' @param force bypass the guard
 #' @return a vector (or list of band vectors) with attribute `gis`,
 #'   interchangeable with the output of gdalraster `read_ds`
+#' @examples
+#' \dontrun{
+#' ## needs a Python environment with xarray (and here h5netcdf)
+#' con <- dbConnect(xarray(), "oisst.nc", engine = "h5netcdf")
+#' r <- xr_raster(con, "ds.sst.isel(time=0, zlev=0)")
+#' attr(r, "gis")$dim
+#'
+#' ## or from a result
+#' res <- dbSendQuery(con, "ds.sst.isel(time=0, zlev=0)")
+#' r <- xr_raster(res)
+#' }
 #' @export
 xr_raster <- function(x, statement = NULL,  as_list = FALSE,
                       max_cells = getOption("xrdbi.max_cells", 1e7),

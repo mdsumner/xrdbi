@@ -17,12 +17,29 @@ xarray()
 
 \S4method{dbDataType}{XarrayDriver}(dbObj, obj, ...)
 }
+\arguments{
+\item{object, drv, dbObj}{an XarrayDriver}
+
+\item{...}{unused}
+
+\item{obj}{an R object, for \code{dbDataType()}}
+}
+\value{
+\code{xarray()}: an XarrayDriver. \code{dbDataType()}: character, the
+numpy dtype an R vector maps to. \code{dbUnloadDriver()}: \code{TRUE},
+invisibly. \code{show()}: called for its output.
+}
 \description{
 Use with \code{\link[DBI:dbConnect]{DBI::dbConnect()}} to open a connection to an xarray object in
-a live Python session managed by reticulate.
+a live Python session managed by reticulate (see
+\link[=dbConnect,XarrayDriver-method]{dbConnect()}).
 }
 \examples{
+drv <- xarray()
+drv
+dbDataType(drv, Sys.Date())
 \dontrun{
-con <- dbConnect(xarray(), "https://example.com/oisst.zarr", open = "open_zarr")
+## needs a Python environment with xarray (and here zarr)
+con <- dbConnect(drv, "https://example.com/oisst.zarr", open = "open_zarr")
 }
 }

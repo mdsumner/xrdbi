@@ -25,7 +25,6 @@
 #' @export
 #' @examples
 #' xr_query(vars = "sst", sel = list(lat = c(-80, -60)), isel = list(time = 0))
-#' # "ds[['sst']].sel(lat=slice(-80, -60)).isel(time=0)"
 xr_query <- function(vars = NULL, sel = NULL, isel = NULL,
                      method = NULL, tail = NULL) {
   expr <- "ds"

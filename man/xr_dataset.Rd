@@ -12,8 +12,20 @@ xr_module(conn)
 \arguments{
 \item{conn}{an XarrayConnection}
 }
+\value{
+a reticulate Python object, not converted to R
+}
 \description{
 \code{xr_dataset()} returns the xarray Dataset handle (not converted),
 \code{xr_module()} the xarray module. Everything the veneer cannot express
 is one step away.
+}
+\examples{
+\dontrun{
+## needs a Python environment with xarray (and here h5netcdf)
+con <- dbConnect(xarray(), "oisst.nc", engine = "h5netcdf")
+ds <- xr_dataset(con)
+ds$sst$encoding
+xr_module(con)$`__version__`
+}
 }

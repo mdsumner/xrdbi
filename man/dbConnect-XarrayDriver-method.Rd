@@ -26,6 +26,9 @@
 
 \item{object}{an existing Python xarray object to adopt}
 }
+\value{
+an \link[=XarrayConnection-class]{XarrayConnection}
+}
 \description{
 Exactly one of \code{dsn}, \code{builder}, \code{object} must be supplied.
 }
@@ -46,4 +49,19 @@ adopted as-is. Handy when the object was built interactively with
 
 The connection holds a reference to the Python object; nothing is
 computed or converted until a result is fetched.
+}
+\examples{
+\dontrun{
+## needs a Python environment with xarray and the engine named
+con <- dbConnect(xarray(), "oisst.nc", engine = "h5netcdf")
+
+## anything that takes more than one call
+con <- dbConnect(xarray(), builder = function(xr) {
+  xr$open_mfdataset(c("a.nc", "b.nc"), engine = "h5netcdf")
+})
+
+## an object already built in the session
+reticulate::py_run_string("import xarray; myds = xarray.Dataset()")
+con <- dbConnect(xarray(), object = reticulate::py_eval("myds", convert = FALSE))
+}
 }

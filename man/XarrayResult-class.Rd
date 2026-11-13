@@ -3,11 +3,98 @@
 \docType{class}
 \name{XarrayResult-class}
 \alias{XarrayResult-class}
+\alias{dbSendQuery,XarrayConnection,character-method}
+\alias{show,XarrayResult-method}
+\alias{dbIsValid,XarrayResult-method}
+\alias{dbGetStatement,XarrayResult-method}
+\alias{dbFetch,XarrayResult-method}
+\alias{dbHasCompleted,XarrayResult-method}
+\alias{dbGetRowCount,XarrayResult-method}
+\alias{dbClearResult,XarrayResult-method}
 \title{Xarray result}
+\usage{
+\S4method{dbSendQuery}{XarrayConnection,character}(conn, statement, ...)
+
+\S4method{show}{XarrayResult}(object)
+
+\S4method{dbIsValid}{XarrayResult}(dbObj, ...)
+
+\S4method{dbGetStatement}{XarrayResult}(res, ...)
+
+\S4method{dbFetch}{XarrayResult}(
+  res,
+  n = -1,
+  ...,
+  max_cells = getOption("xrdbi.max_cells", 1e+07),
+  force = FALSE
+)
+
+\S4method{dbHasCompleted}{XarrayResult}(res, ...)
+
+\S4method{dbGetRowCount}{XarrayResult}(res, ...)
+
+\S4method{dbClearResult}{XarrayResult}(res, ...)
+}
+\arguments{
+\item{conn}{an XarrayConnection}
+
+\item{statement}{a Python expression over \code{ds} (and \code{xr})}
+
+\item{...}{unused}
+
+\item{object, dbObj, res}{an XarrayResult}
+
+\item{n}{number of rows to fetch, \code{-1} for all remaining}
+
+\item{max_cells}{guard threshold for the first fetch, default
+\code{getOption("xrdbi.max_cells", 1e7)}}
+
+\item{force}{bypass the guard}
+}
+\value{
+\itemize{
+\item \code{dbSendQuery()}: an XarrayResult
+\item \code{dbFetch()}: a data frame of the next \code{n} rows
+\item \code{dbHasCompleted()}, \code{dbIsValid()}: logical
+\item \code{dbGetRowCount()}: the number of rows fetched so far
+\item \code{dbGetStatement()}: the statement
+\item \code{dbClearResult()}: \code{TRUE}, invisibly
+\item \code{show()}: called for its output
+}
+}
 \description{
 A statement is a Python expression evaluated with \code{ds} (the dataset)
 and \code{xr} (the module) in scope. Evaluation at \code{\link[DBI:dbSendQuery]{DBI::dbSendQuery()}} is
 lazy in the xarray sense: it builds the selection graph, moves no
 bytes. Rendering to the tidy data frame happens at the first
-\code{\link[DBI:dbFetch]{DBI::dbFetch()}}.
+\code{\link[DBI:dbFetch]{DBI::dbFetch()}}: one row per cell, every coordinate as a column,
+exactly as xarray's \verb{to_dataframe().reset_index()} gives it.
+\code{\link[DBI:dbGetQuery]{DBI::dbGetQuery()}} is the two in one step.
+}
+\details{
+The first fetch is guarded: an xarray result above \code{max_cells} cells
+errors unless \code{force = TRUE} (see \code{options(xrdbi.max_cells = )}).
+Later fetches page through the same rows.
+}
+\section{Slots}{
+
+\describe{
+\item{\code{ptr}}{environment holding the evaluated Python object and the
+fetch state}
+
+\item{\code{statement}}{the Python expression}
+}}
+
+\examples{
+\dontrun{
+## needs a Python environment with xarray (and here h5netcdf)
+con <- dbConnect(xarray(), "oisst.nc", engine = "h5netcdf")
+res <- dbSendQuery(con, "ds.sst.isel(time=0)")
+dbFetch(res, n = 5)
+dbFetch(res, n = 5)
+dbGetRowCount(res)
+dbClearResult(res)
+
+dbGetQuery(con, "ds.sst.sel(lat=slice(-56, -55), lon=slice(100, 101))")
+}
 }

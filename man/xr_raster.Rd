@@ -48,3 +48,15 @@ is handled on either axis (rows and columns are reordered into
 top-left pixel order). Curvilinear grids have no affine rendering
 and error.
 }
+\examples{
+\dontrun{
+## needs a Python environment with xarray (and here h5netcdf)
+con <- dbConnect(xarray(), "oisst.nc", engine = "h5netcdf")
+r <- xr_raster(con, "ds.sst.isel(time=0, zlev=0)")
+attr(r, "gis")$dim
+
+## or from a result
+res <- dbSendQuery(con, "ds.sst.isel(time=0, zlev=0)")
+r <- xr_raster(res)
+}
+}

@@ -10,6 +10,12 @@
   that need no Python (statement compilation, row windows, head blocks)
   still run there.
 
+* Every DBI method is documented: connection methods on
+  `?XarrayConnection-class`, result methods (with `dbSendQuery()`) on
+  `?XarrayResult-class`, driver methods on `?xarray`. Every exported
+  function documents its return value and has examples; those needing
+  Python are in `\dontrun{}`.
+
 ## README
 
 * The README is now `README.Rmd`, built live with
