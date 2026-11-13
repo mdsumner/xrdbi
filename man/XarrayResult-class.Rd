@@ -4,6 +4,7 @@
 \name{XarrayResult-class}
 \alias{XarrayResult-class}
 \alias{dbSendQuery,XarrayConnection,character-method}
+\alias{dbBind,XarrayResult-method}
 \alias{show,XarrayResult-method}
 \alias{dbIsValid,XarrayResult-method}
 \alias{dbGetStatement,XarrayResult-method}
@@ -13,7 +14,9 @@
 \alias{dbClearResult,XarrayResult-method}
 \title{Xarray result}
 \usage{
-\S4method{dbSendQuery}{XarrayConnection,character}(conn, statement, ...)
+\S4method{dbSendQuery}{XarrayConnection,character}(conn, statement, ..., params = NULL)
+
+\S4method{dbBind}{XarrayResult}(res, params, ...)
 
 \S4method{show}{XarrayResult}(object)
 
@@ -42,6 +45,9 @@
 
 \item{...}{unused}
 
+\item{params}{named list of values the statement refers to by name;
+see the Parameters section}
+
 \item{object, dbObj, res}{an XarrayResult}
 
 \item{n}{number of rows to fetch, \code{-1} for all remaining}
@@ -54,6 +60,7 @@
 \value{
 \itemize{
 \item \code{dbSendQuery()}: an XarrayResult
+\item \code{dbBind()}: the result, invisibly, ready to fetch from the start
 \item \code{dbFetch()}: a data frame of the next \code{n} rows
 \item \code{dbHasCompleted()}, \code{dbIsValid()}: logical
 \item \code{dbGetRowCount()}: the number of rows fetched so far
@@ -85,6 +92,29 @@ fetch state}
 \item{\code{statement}}{the Python expression}
 }}
 
+\section{Parameters}{
+
+\code{params} is a named list; each element becomes a Python variable of
+that name in the statement's scope, beside \code{ds} and \code{xr}, so
+\code{dbGetQuery(con, "ds.sst.sel(lat=lat0, method='nearest')", params = list(lat0 = -60))} selects at \code{-60}. \code{dbBind()} evaluates the
+statement again with new values and restarts the fetch. Values become:
+\itemize{
+\item length-1 vectors: numpy scalars (wrap in \code{\link[=I]{I()}} to keep a 1-element
+array); longer vectors: 1-D numpy arrays. Factors become strings.
+\item \code{Date}: \code{datetime64[D]}; \code{POSIXct}: \code{datetime64[ns]} as UTC, the way
+xarray stores times; \code{NA} becomes \code{NaT}
+\item geometry (an sfc, the geometry column of an sf, or any wk vector):
+shapely geometries via WKB, as a numpy array; with a CRS, a
+geopandas \code{GeoSeries} carrying it (needs geopandas), the form xvec's
+\code{extract_points()} and \code{zonal_stats()} take
+\item data frames: pandas DataFrames
+\item reticulate Python objects: unchanged
+}
+
+Names must be Python identifiers; \code{ds}, \code{xr} and names starting with
+\verb{_xrdbi} are reserved.
+}
+
 \examples{
 \dontrun{
 ## needs a Python environment with xarray (and here h5netcdf)
@@ -96,5 +126,22 @@ dbGetRowCount(res)
 dbClearResult(res)
 
 dbGetQuery(con, "ds.sst.sel(lat=slice(-56, -55), lon=slice(100, 101))")
+
+## values from R, by name
+dbGetQuery(con,
+  "ds.sst.sel(lat=xr.DataArray(lats, dims='pt'),
+              lon=xr.DataArray(lons, dims='pt'), method='nearest')",
+  params = list(lats = c(-60, -55), lons = c(100, 140)))
+res <- dbSendQuery(con, "ds.sst.sel(time=t0)",
+                   params = list(t0 = as.Date("1981-09-01")))
+dbBind(res, list(t0 = as.Date("1981-09-02")))
+dbFetch(res, n = 5)
+dbClearResult(res)
+
+## geometry: sf or wk vectors become shapely (a GeoSeries with a CRS),
+## e.g. for xvec
+pts <- wk::xy(c(100.1, 140.2), c(-60.3, -55.4), crs = "EPSG:4326")
+dbGetQuery(con, "ds.sst.xvec.extract_points(pts, x_coords='lon', y_coords='lat')",
+           params = list(pts = pts))
 }
 }

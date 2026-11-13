@@ -1,6 +1,6 @@
 Package: xrdbi
 Title: 'DBI' Backend for 'xarray' via a Live 'reticulate' Session
-Version: 0.0.1.9009
+Version: 0.0.1.9010
 Authors@R: c(
     person("Michael", "Sumner", email = "mdsumner@gmail.com",
            role = c("aut", "cre")),
@@ -27,7 +27,9 @@ Imports:
     rlang, 
     utils
 Suggests:
-    testthat (>= 3.0.0)
+    sf,
+    testthat (>= 3.0.0),
+    wk
 Config/testthat/edition: 3
 SystemRequirements: Python (>= 3.11) with the 'xarray', 'pandas' and
     'numpy' modules, plus IO engines for the data at hand (e.g.

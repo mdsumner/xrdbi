@@ -1,5 +1,22 @@
 # xrdbi (development version)
 
+## Query parameters
+
+* `dbSendQuery()`, `dbGetQuery()` and `xr_raster()` take `params`, a named
+  list whose elements become Python variables in the statement's scope
+  beside `ds` and `xr`: `dbGetQuery(con, "ds.sst.sel(lat=lat0,
+  method='nearest')", params = list(lat0 = -60))`. Length-1 vectors
+  become numpy scalars (`I()` keeps an array), longer ones numpy arrays,
+  `Date` and `POSIXct` become `datetime64` (UTC, `NA` as `NaT`), data
+  frames pandas, and geometry (sf, sfc, wk vectors) shapely, or a
+  geopandas `GeoSeries` when it has a CRS, so xvec's `extract_points()`
+  and `zonal_stats()` can be driven from R.
+
+* `dbBind()` evaluates a result's statement again with new `params` and
+  restarts its fetch.
+
+* An unbound name in a statement now says how to pass it.
+
 ## CRAN preparation
 
 * Tests that need Python skip on CRAN. Checking for the Python modules

@@ -20,6 +20,8 @@
 #'
 #' @param x an XarrayResult, or an XarrayConnection (with `statement`)
 #' @param statement a Python expression, when `x` is a connection
+#' @param params named list of values the statement refers to, when
+#'   `x` is a connection (see [XarrayResult-class])
 #' @param as_list if TRUE, a list of band vectors instead of one
 #'   band-interleaved vector
 #' @param max_cells guard threshold, as elsewhere
@@ -38,13 +40,13 @@
 #' r <- xr_raster(res)
 #' }
 #' @export
-xr_raster <- function(x, statement = NULL,  as_list = FALSE,
+xr_raster <- function(x, statement = NULL, as_list = FALSE,
                       max_cells = getOption("xrdbi.max_cells", 1e7),
-                      force = FALSE) {
+                      force = FALSE, params = NULL) {
   made_res <- FALSE
   if (inherits(x, "XarrayConnection")) {
     stopifnot(is.character(statement), length(statement) == 1L)
-    res <- dbSendQuery(x, statement)
+    res <- dbSendQuery(x, statement, params = params)
     made_res <- TRUE
     on.exit(dbClearResult(res), add = TRUE)
   } else if (inherits(x, "XarrayResult")) {

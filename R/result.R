@@ -12,6 +12,26 @@
 #' errors unless `force = TRUE` (see `options(xrdbi.max_cells = )`).
 #' Later fetches page through the same rows.
 #'
+#' @section Parameters:
+#' `params` is a named list; each element becomes a Python variable of
+#' that name in the statement's scope, beside `ds` and `xr`, so
+#' `dbGetQuery(con, "ds.sst.sel(lat=lat0, method='nearest')",
+#' params = list(lat0 = -60))` selects at `-60`. `dbBind()` evaluates the
+#' statement again with new values and restarts the fetch. Values become:
+#' * length-1 vectors: numpy scalars (wrap in [I()] to keep a 1-element
+#'   array); longer vectors: 1-D numpy arrays. Factors become strings.
+#' * `Date`: `datetime64[D]`; `POSIXct`: `datetime64[ns]` as UTC, the way
+#'   xarray stores times; `NA` becomes `NaT`
+#' * geometry (an sfc, the geometry column of an sf, or any wk vector):
+#'   shapely geometries via WKB, as a numpy array; with a CRS, a
+#'   geopandas `GeoSeries` carrying it (needs geopandas), the form xvec's
+#'   `extract_points()` and `zonal_stats()` take
+#' * data frames: pandas DataFrames
+#' * reticulate Python objects: unchanged
+#'
+#' Names must be Python identifiers; `ds`, `xr` and names starting with
+#' `_xrdbi` are reserved.
+#'
 #' @slot ptr environment holding the evaluated Python object and the
 #'   fetch state
 #' @slot statement the Python expression
@@ -22,9 +42,12 @@
 #' @param max_cells guard threshold for the first fetch, default
 #'   `getOption("xrdbi.max_cells", 1e7)`
 #' @param force bypass the guard
+#' @param params named list of values the statement refers to by name;
+#'   see the Parameters section
 #' @param ... unused
 #' @return
 #' * `dbSendQuery()`: an XarrayResult
+#' * `dbBind()`: the result, invisibly, ready to fetch from the start
 #' * `dbFetch()`: a data frame of the next `n` rows
 #' * `dbHasCompleted()`, `dbIsValid()`: logical
 #' * `dbGetRowCount()`: the number of rows fetched so far
@@ -42,6 +65,23 @@
 #' dbClearResult(res)
 #'
 #' dbGetQuery(con, "ds.sst.sel(lat=slice(-56, -55), lon=slice(100, 101))")
+#'
+#' ## values from R, by name
+#' dbGetQuery(con,
+#'   "ds.sst.sel(lat=xr.DataArray(lats, dims='pt'),
+#'               lon=xr.DataArray(lons, dims='pt'), method='nearest')",
+#'   params = list(lats = c(-60, -55), lons = c(100, 140)))
+#' res <- dbSendQuery(con, "ds.sst.sel(time=t0)",
+#'                    params = list(t0 = as.Date("1981-09-01")))
+#' dbBind(res, list(t0 = as.Date("1981-09-02")))
+#' dbFetch(res, n = 5)
+#' dbClearResult(res)
+#'
+#' ## geometry: sf or wk vectors become shapely (a GeoSeries with a CRS),
+#' ## e.g. for xvec
+#' pts <- wk::xy(c(100.1, 140.2), c(-60.3, -55.4), crs = "EPSG:4326")
+#' dbGetQuery(con, "ds.sst.xvec.extract_points(pts, x_coords='lon', y_coords='lat')",
+#'            params = list(pts = pts))
 #' }
 #' @export
 setClass("XarrayResult", contains = "DBIResult",
@@ -51,27 +91,36 @@ setClass("XarrayResult", contains = "DBIResult",
 #' @export
 #' @importFrom reticulate py_dict
 setMethod("dbSendQuery", signature("XarrayConnection", "character"),
-  function(conn, statement, ...) {
-    ds <- conn_ds(conn)
-    xr <- conn_xr(conn)
-    bt <- import_builtins(convert = FALSE)
-    scope <- py_dict(c("ds", "xr", "_xrdbi_render"),
-                     list(ds, xr, conn@ptr$render), convert = FALSE)
-
-
-    obj <- bt$eval(statement, scope)
-
+  function(conn, statement, ..., params = NULL) {
     ptr <- new.env(parent = emptyenv())
     ptr$conn <- conn
-    ptr$obj <- obj          # unevaluated xarray object (or plain python value)
-    ptr$df <- NULL          # pandas frame, rendered on first fetch
-    ptr$cursor <- 0L
-    ptr$nrow <- NA_integer_
+    ptr$params <- params
+    ## lazy in xarray's sense: a selection graph, no bytes yet
+    ptr$obj <- eval_statement(conn, statement, params)
+    reset_fetch(ptr)
     ptr$valid <- TRUE
-
-
     new("XarrayResult", ptr = ptr, statement = statement)
   })
+
+## a fresh fetch state: nothing rendered, cursor at the start
+reset_fetch <- function(ptr) {
+  ptr$df <- NULL          # pandas frame, if the render path is taken
+  ptr$plan <- NULL        # R-built long form, if the plan path is taken
+  ptr$cursor <- 0L
+  ptr$nrow <- NA_integer_
+  invisible(ptr)
+}
+
+#' @rdname XarrayResult-class
+#' @export
+setMethod("dbBind", "XarrayResult", function(res, params, ...) {
+  ptr <- res@ptr
+  if (!isTRUE(ptr$valid)) stop("result has been cleared", call. = FALSE)
+  ptr$params <- params
+  ptr$obj <- eval_statement(ptr$conn, res@statement, params)
+  reset_fetch(ptr)
+  invisible(res)
+})
 
 #' @rdname XarrayResult-class
 #' @export

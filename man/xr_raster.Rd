@@ -9,7 +9,8 @@ xr_raster(
   statement = NULL,
   as_list = FALSE,
   max_cells = getOption("xrdbi.max_cells", 1e+07),
-  force = FALSE
+  force = FALSE,
+  params = NULL
 )
 }
 \arguments{
@@ -23,6 +24,9 @@ band-interleaved vector}
 \item{max_cells}{guard threshold, as elsewhere}
 
 \item{force}{bypass the guard}
+
+\item{params}{named list of values the statement refers to, when
+\code{x} is a connection (see \link[=XarrayResult-class]{XarrayResult})}
 }
 \value{
 a vector (or list of band vectors) with attribute \code{gis},

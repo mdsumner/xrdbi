@@ -6,7 +6,7 @@
 \alias{xrdbi-package}
 \title{xrdbi: 'DBI' Backend for 'xarray' via a Live 'reticulate' Session}
 \description{
-Treats a live Python session holding an 'xarray' object as a database connection. Tables are data variables, fields are dimensions and coordinates, queries are Python expressions (or compiled from a small structured spec) evaluated lazily against the dataset, and fetching renders to various output types.
+Treats a live Python session holding an 'xarray' \url{https://xarray.dev} object as a database connection. Tables are variables, fields are dimensions and coordinates, and queries are Python expressions (or compiled from a small structured spec or from 'dplyr' verbs) evaluated lazily against the dataset. Fetching renders the tidy long form, one row per cell, built in R from the values; results can also render as an in-memory raster.
 }
 \seealso{
 Useful links:
@@ -22,6 +22,11 @@ Useful links:
 Authors:
 \itemize{
   \item Michael Sumner \email{mdsumner@gmail.com}
+}
+
+Other contributors:
+\itemize{
+  \item The GDAL/OGR contributors (test fixtures in inst/extdata/autotest, see inst/COPYRIGHTS) [copyright holder]
 }
 
 }
