@@ -184,10 +184,18 @@ dbDisconnect(con)
 ## Where next
 
 * `?xrdbi` maps the functions by task and lists the options.
-* `?tbl_xarray` has the full list of verbs and filter forms, and how
-  each is compiled.
-* The [Python environments](https://mdsumner.github.io/xrdbi/articles/python-environments.html)
-  article covers zarr, cloud stores, GDAL and conda.
-* The [README](https://github.com/mdsumner/xrdbi#readme) runs the same
-  queries against NOAA OISST over HTTPS, ERA5 in zarr on Google Cloud,
-  and a Sentinel-2 COG.
+* The articles on the [package website](https://mdsumner.github.io/xrdbi/)
+  go further, with live examples on public data:
+  * [Querying with dplyr](https://mdsumner.github.io/xrdbi/articles/dplyr.html):
+    how each verb compiles, and what gets read
+  * [Parameters](https://mdsumner.github.io/xrdbi/articles/parameters.html):
+    R values and geometries in statements
+  * [From arrays to rows](https://mdsumner.github.io/xrdbi/articles/rendering.html):
+    the shape and types of results, and when work happens
+  * [Data sources](https://mdsumner.github.io/xrdbi/articles/data-sources.html):
+    netCDF over HTTPS, zarr on cloud storage, GDAL, many files
+  * [Rasters](https://mdsumner.github.io/xrdbi/articles/rasters.html),
+    [Chunk maps](https://mdsumner.github.io/xrdbi/articles/chunk-maps.html) and
+    [Curvilinear grids and vector cubes](https://mdsumner.github.io/xrdbi/articles/curvilinear.html)
+  * [Python environments](https://mdsumner.github.io/xrdbi/articles/python-environments.html):
+    reticulate, conda, and the gdal-r-python image

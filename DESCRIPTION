@@ -1,6 +1,6 @@
 Package: xrdbi
 Title: 'DBI' Backend for 'xarray' via a Live 'reticulate' Session
-Version: 0.0.1.9031
+Version: 0.0.1.9032
 Authors@R: c(
     person("Michael", "Sumner", email = "mdsumner@gmail.com",
            role = c("aut", "cre")),
@@ -33,6 +33,7 @@ Suggests:
     testthat (>= 3.0.0),
     wk
 VignetteBuilder: knitr
+Config/Needs/website: gdalraster, sf
 Config/testthat/edition: 3
 SystemRequirements: Python (>= 3.11) with the 'xarray' and 'netCDF4'
     modules, declared on load with reticulate::py_require() and

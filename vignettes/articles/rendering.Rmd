@@ -1,0 +1,193 @@
+---
+title: "From arrays to rows"
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+Every query result in xrdbi becomes a data frame in the same way, so it
+pays to know that way. This article covers the shape of the rows, the
+types of the columns, and when the work happens.
+
+```{r}
+library(xrdbi)
+library(DBI)
+```
+
+The examples use a small Dataset with the shapes that matter: two
+variables on (time, lat, lon), a scalar coordinate `zlev`, and a 2-D
+coordinate `cell_area` on (lat, lon).
+
+```{r}
+con <- dbConnect(xarray(), builder = function(xr) {
+  reticulate::py_run_string("
+import xarray as xr, numpy as np, pandas as pd
+rng = np.random.default_rng(42)
+ocean = xr.Dataset(
+  {'sst': (('time', 'lat', 'lon'), rng.random((3, 4, 5)).astype('float32')),
+   'ice': (('time', 'lat', 'lon'), rng.random((3, 4, 5)).astype('float32'))},
+  coords={'time': pd.date_range('2026-01-01', periods=3),
+          'lat': np.linspace(-80, -60, 4),
+          'lon': np.linspace(0, 40, 5),
+          'zlev': 0.0,
+          'cell_area': (('lat', 'lon'), np.ones((4, 5)))})
+")
+  reticulate::py_eval("ocean", convert = FALSE)
+})
+con
+```
+
+## The long form
+
+A result renders as xarray's `to_dataframe().reset_index()` would give
+it. There is one row per cell, in C order (the last dimension varies
+fastest). The columns are the dimensions in the variable's order, then
+its other coordinates, broadcast to every row, then the variable itself.
+`dbListFields()` names them in advance.
+
+```{r}
+dbListFields(con, "sst")
+head(dbGetQuery(con, "ds.sst"))
+```
+
+A Dataset renders a column per data variable on their shared
+dimensions. After the dimensions come its other variables, data
+variables and coordinates, in the Dataset's own order (a scalar `time`
+here, left by the selection):
+
+```{r}
+head(dbGetQuery(con, "ds[['sst', 'ice']].isel(time=0)"), 3)
+```
+
+Variables with fewer dimensions are broadcast, as `to_dataframe()` does,
+so a per-time value repeats along lat and lon:
+
+```{r}
+head(dbGetQuery(con,
+  "ds[['sst']].assign(sst_mean=ds.sst.mean(['lat', 'lon']))"), 3)
+```
+
+## Smaller shapes
+
+A coordinate is a table too, and renders as a single column of its
+values:
+
+```{r}
+dbGetQuery(con, "ds.lat")
+```
+
+A selection that drops every dimension renders one row. A data variable
+keeps the coordinates that were its dimensions, so a nearest-point
+lookup says where it landed; a 0-d coordinate renders just itself.
+
+```{r}
+dbGetQuery(con, "ds.sst.sel(time='2026-01-02', lat=-71, lon=12, method='nearest')")
+dbGetQuery(con, "ds.time.isel(time=-1)")
+```
+
+A reduction is an ordinary result of whatever shape it has:
+
+```{r}
+dbGetQuery(con, "ds.sst.mean('time')") |> head(3)
+dbGetQuery(con, "ds.sst.mean()")
+```
+
+A statement may also end in pandas, which is returned as it is, or in
+any other Python value, which becomes one row in a column named
+`value`:
+
+```{r}
+dbGetQuery(con,
+  "ds.sst.isel(time=0).to_dataframe().reset_index().nlargest(3, 'sst')")
+dbGetQuery(con, "len(ds.data_vars)")
+```
+
+## Types
+
+Each column converts on its own, from the array's type:
+
+| In xarray (numpy or pandas)               | In R                                   |
+|-------------------------------------------|----------------------------------------|
+| `float16` to `float64`                    | double; missing values stay `NaN`      |
+| `int8` to `int32`, `uint8`, `uint16`      | integer                                |
+| `int64`, `uint32`, `uint64`               | double (exact up to 2^53)              |
+| `bool`                                    | logical                                |
+| `datetime64`                              | `POSIXct` in UTC; `NaT` becomes `NA`   |
+| time-zone-aware times (pandas)            | `POSIXct` in their own zone            |
+| `timedelta64`                             | `difftime` in seconds; `NaT` is `NA`   |
+| strings, bytes                            | character                              |
+| cftime dates (non-standard calendars)     | character, as ISO text                 |
+| pandas categoricals                       | factor                                 |
+| pandas nullable types (`Int64`, `boolean`) | integer, double or logical, with `NA`  |
+| shapely geometry (an xvec cube)           | `wk::wkb()` with its CRS (needs wk)    |
+
+```{r}
+types <- dbConnect(xarray(), builder = function(xr) {
+  reticulate::py_run_string("
+import xarray as xr, numpy as np, pandas as pd, cftime
+types = xr.Dataset(
+  {'f32': ('station', np.array([1.5, np.nan, 3.25], dtype='float32')),
+   'i16': ('station', np.array([1, 2, 3], dtype='int16')),
+   'i64': ('station', np.array([1, 2, 2**40], dtype='int64')),
+   'flag': ('station', [True, False, True]),
+   'when': ('station', pd.to_datetime(['2026-01-01', '2026-01-02', None])),
+   'lag': ('station', pd.to_timedelta(['1h', '90min', None])),
+   'name': ('station', np.array(['Casey', 'Davis', 'Mawson'])),
+   'model_day': ('station', [cftime.DatetimeNoLeap(2028, 2, 27),
+                             cftime.DatetimeNoLeap(2028, 2, 28),
+                             cftime.DatetimeNoLeap(2028, 3, 1)])},
+  coords={'station': np.array([1, 2, 3], dtype='int32')})
+")
+  reticulate::py_eval("types", convert = FALSE)
+})
+str(dbGetQuery(types, "ds"))
+dbDisconnect(types)
+```
+
+`model_day` is in a 365-day calendar, where 2028 has no 29 February and
+28 February is followed by 1 March. R has no types for such calendars,
+so these dates arrive as character: labels, not times.
+
+## When the work happens
+
+Three moments matter:
+
+* **`dbSendQuery()`** evaluates the statement in Python. A selection
+  (`sel()`, `isel()`, indexing) reads nothing here: xarray's arrays are
+  lazy until their values are asked for. A statement that computes, such
+  as a mean or arithmetic, runs in full here, unless the data are
+  dask-backed.
+* **The first `dbFetch()`** checks the guard, which sizes the result,
+  and then reads its values. `dbGetQuery()` is send and fetch together.
+* **Every fetch** builds its rows in R: only the values cross from
+  Python, and the coordinate columns are repeated with `rep()`, so
+  `dbFetch(n = )` builds only the rows it is asked for.
+
+```{r}
+res <- dbSendQuery(con, "ds.sst.isel(time=0)")
+dbFetch(res, n = 2)
+dbFetch(res, n = 2)
+dbHasCompleted(res)
+dbClearResult(res)
+```
+
+Because the guard sizes only the result, a reduction over a large
+variable runs at send time, before any guard. Select first, then reduce.
+
+The guard counts the cells of the xarray result (for a Dataset, the
+rows multiplied by the data variables) and errors above `max_cells`, 10 million by
+default (`getOption("xrdbi.max_cells")`):
+
+```{r}
+try(dbGetQuery(con, "ds", max_cells = 50))
+nrow(dbGetQuery(con, "ds", max_cells = 50, force = TRUE))
+dbDisconnect(con)
+```
+
+## Where next
+
+* [Querying with dplyr](dplyr.html) builds these statements from verbs.
+* [Rasters](rasters.html) renders a 2-D slab as pixels instead of rows.
+* [Curvilinear grids and vector cubes](curvilinear.html) has 2-D
+  coordinates and geometry columns.

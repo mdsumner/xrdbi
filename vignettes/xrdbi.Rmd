@@ -170,7 +170,7 @@ library(dplyr, warn.conflicts = FALSE)
 rain <- tbl(con, "pcp") |>
   filter(latitude > -14, latitude < -13, longitude <= -78)
 show_query(rain)
-#> ds['pcp'].sel(latitude=slice(-14, -13), longitude=slice(None, -78)).pipe(lambda a: a.isel(latitude=(a.indexes['latitude'] > -14) & (a.indexes['latitude'] < -13)))
+#> ds['pcp'].sel(latitude=slice(-14, -13), longitude=slice(None, -78)).pipe(lambda a: a.isel(latitude=(a['latitude'].to_index() > -14) & (a['latitude'].to_index() < -13)))
 collect(rain)
 #> # A tibble: 32 × 4
 #>    time                latitude longitude         pcp
@@ -195,7 +195,7 @@ rows, reading at most one chunk:
 ``` r
 rain
 #> <tbl_xarray> pcp
-#>   python: ds['pcp'].sel(latitude=slice(-14, -13), longitude=slice(None, -78)).pipe(lambda a: a.isel(latitude=(a.indexes['latitude'] > -14) & (a.indexes['latitude'] < -13)))
+#>   python: ds['pcp'].sel(latitude=slice(-14, -13), longitude=slice(None, -78)).pipe(lambda a: a.isel(latitude=(a['latitude'].to_index() > -14) & (a['latitude'].to_index() < -13)))
 #>   sizes : time: 1, latitude: 4, longitude: 8
 #> # A tibble: 6 × 4
 #>   time                latitude longitude         pcp
@@ -284,10 +284,18 @@ dbDisconnect(con)
 ## Where next
 
 * `?xrdbi` maps the functions by task and lists the options.
-* `?tbl_xarray` has the full list of verbs and filter forms, and how
-  each is compiled.
-* The [Python environments](https://mdsumner.github.io/xrdbi/articles/python-environments.html)
-  article covers zarr, cloud stores, GDAL and conda.
-* The [README](https://github.com/mdsumner/xrdbi#readme) runs the same
-  queries against NOAA OISST over HTTPS, ERA5 in zarr on Google Cloud,
-  and a Sentinel-2 COG.
+* The articles on the [package website](https://mdsumner.github.io/xrdbi/)
+  go further, with live examples on public data:
+  * [Querying with dplyr](https://mdsumner.github.io/xrdbi/articles/dplyr.html):
+    how each verb compiles, and what gets read
+  * [Parameters](https://mdsumner.github.io/xrdbi/articles/parameters.html):
+    R values and geometries in statements
+  * [From arrays to rows](https://mdsumner.github.io/xrdbi/articles/rendering.html):
+    the shape and types of results, and when work happens
+  * [Data sources](https://mdsumner.github.io/xrdbi/articles/data-sources.html):
+    netCDF over HTTPS, zarr on cloud storage, GDAL, many files
+  * [Rasters](https://mdsumner.github.io/xrdbi/articles/rasters.html),
+    [Chunk maps](https://mdsumner.github.io/xrdbi/articles/chunk-maps.html) and
+    [Curvilinear grids and vector cubes](https://mdsumner.github.io/xrdbi/articles/curvilinear.html)
+  * [Python environments](https://mdsumner.github.io/xrdbi/articles/python-environments.html):
+    reticulate, conda, and the gdal-r-python image

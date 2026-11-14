@@ -1,0 +1,204 @@
+---
+title: "Querying with dplyr"
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+`tbl(con, variable)` gives a lazy table over one variable of an xarray
+Dataset. dplyr verbs on it accumulate, and nothing is read until
+`collect()`. The verbs compile to a single Python statement, the same
+kind you could write yourself for `dbGetQuery()`, and `show_query()`
+prints it. This article shows how each verb compiles, and so what gets
+read.
+
+```{r}
+library(xrdbi)
+library(DBI)
+library(dplyr, warn.conflicts = FALSE)
+```
+
+The examples use a small Dataset built in Python: ten days of a
+sea-surface-temperature-like variable on a 1 degree grid, with latitude
+stored north to south, as many products store it, and a few missing
+values.
+
+```{r}
+con <- dbConnect(xarray(), builder = function(xr) {
+  reticulate::py_run_string("
+import xarray as xr, numpy as np, pandas as pd
+rng = np.random.default_rng(1)
+lat = np.arange(-40.5, -50, -1.0)            # descending
+lon = np.arange(140.5, 150, 1.0)
+time = pd.date_range('2026-01-01', periods=10)
+sst = 12 + 0.5 * (lat[None, :, None] + 45) + rng.normal(0, 0.3, (10, 10, 10))
+sst[:, 0, :2] = np.nan
+toy = xr.Dataset({'sst': (('time', 'lat', 'lon'), sst.astype('float32'))},
+                 coords={'time': time, 'lat': lat, 'lon': lon})
+")
+  reticulate::py_eval("toy", convert = FALSE)
+})
+con
+sst <- tbl(con, "sst")
+```
+
+## What a tbl supports
+
+* `filter()`, with `==`, `%in%`, `<`, `<=`, `>`, `>=`, `between()` and
+  `&` (or several arguments), each comparing a field with a value
+* `select()` with plain column names
+* `head()`
+* `collect()` (a tibble), `as.data.frame()` (a data frame),
+  `show_query()`, and printing
+
+Anything else, such as `mutate()`, `summarise()` or `arrange()`, has no
+method: `collect()` first, and carry on with dplyr in R. Filter forms
+outside the list error when the filter is added, saying which forms are
+supported:
+
+```{r}
+try(sst |> filter(lat < -48 | lat > -42))
+```
+
+## Filters on dimensions become selections
+
+A filter on a dimension compiles to a label-based `.sel()`, so xarray
+reads only the cells in range. Inclusive bounds (`>=`, `<=`,
+`between()`) are a `slice()`; `%in%` is a list of exact labels; `==` is
+a single label.
+
+```{r}
+q <- sst |> filter(between(lon, 142, 144), lat == -42.5,
+                   time >= as.Date("2026-01-09"))
+show_query(q)
+collect(q)
+```
+
+Strict bounds (`<`, `>`) cannot be a `.sel()`, which is inclusive, so
+the statement selects the inclusive range and then trims the boundary
+labels with a boolean `.isel()`. The result is still an xarray
+selection, read cell for cell:
+
+```{r}
+sst |> filter(lon > 141.5, lon < 144.5) |> show_query()
+```
+
+Latitude here runs north to south, and a `slice()` in xarray follows
+the order of the coordinate. Written by hand, `slice(-43, -41)` would
+select nothing. The compiler checks the direction of each filtered
+dimension and writes the slice in its order:
+
+```{r}
+q <- sst |> filter(lat >= -43, lat <= -41, time == as.Date("2026-01-01"))
+show_query(q)
+collect(q)
+```
+
+Dates and times compile to their instant in UTC, the way xarray stores
+times: a `Date` as `'YYYY-MM-DD'`, a `POSIXct` as
+`'YYYY-MM-DDTHH:MM:SS'`, whatever its time zone.
+
+```{r}
+sst |>
+  filter(time >= as.POSIXct("2026-01-05 10:00", tz = "Australia/Hobart")) |>
+  show_query()
+```
+
+## Filters on values run in Python after the selection
+
+A filter on the variable itself cannot be a selection, because which
+cells pass depends on their values. It becomes a pandas `.query()` on
+the selected cells, before they come to R. The dimension filters still
+narrow what is read first:
+
+```{r}
+q <- sst |> filter(lat <= -48, sst > 10.4)
+show_query(q)
+collect(q)
+```
+
+With such a filter in place, `select()` and `head()` run in pandas too,
+so only the rows and columns asked for cross to R.
+
+```{r}
+sst |> filter(sst > 14) |> select(time, lat, sst) |> head(3) |> show_query()
+```
+
+Missing values are `NaN` in the array and stay `NaN` in R. A value
+comparison is false for them, so they drop out:
+
+```{r}
+nrow(collect(sst |> filter(time == as.Date("2026-01-01"), lat == -40.5)))
+nrow(collect(sst |> filter(time == as.Date("2026-01-01"), lat == -40.5,
+                           sst > 0)))
+```
+
+Filters on non-dimension coordinates, such as the 2-D longitude and
+latitude of a curvilinear grid, are also exact pandas filters, but the
+read is first narrowed to the block of the grid that holds every
+passing cell. The [curvilinear grids](curvilinear.html) article shows
+it.
+
+## head() reads one corner
+
+Without a value filter, `head(n)` and `select()` apply in R to the
+fetched rows, and `head(n)` first narrows the selection to the leading
+block of the array that holds its `n` rows. The rows of the long form
+run in C order, the last dimension fastest, so the first `n` rows are a
+corner of the array:
+
+```{r}
+sst |> head(4) |> show_query()
+```
+
+That matters on big stores. This is the ARCO ERA5 reanalysis on Google
+Cloud, an hourly zarr store with a time axis of over a million steps.
+The first rows of a variable are one chunk's worth of reading:
+
+```{r}
+reticulate::py_require(c("zarr", "gcsfs"))
+era <- dbConnect(xarray(),
+  "gs://gcp-public-data-arco-era5/ar/full_37-1h-0p25deg-chunk-1.zarr-v3",
+  engine = "zarr", storage_options = reticulate::dict(token = "anon"))
+dbGetInfo(era)$sizes$time
+
+t2m <- tbl(era, "2m_temperature") |>
+  filter(time >= as.POSIXct("1980-01-01", tz = "UTC")) |>
+  select(time, latitude, longitude, `2m_temperature`) |>
+  head(3)
+show_query(t2m)
+collect(t2m)
+dbDisconnect(era)
+```
+
+## Printing is a preview
+
+Printing a lazy table shows the compiled statement, the sizes it
+selects, and its first rows, reading at most one chunk.
+`options(xrdbi.print_n = )` sets the number of rows, and
+`options(xrdbi.print_preview = FALSE)` turns the preview off.
+
+```{r}
+sst |> filter(lat <= -45)
+```
+
+## The guard
+
+`collect()` sizes the xarray part of the statement before reading it,
+and errors above `max_cells` cells (10 million by default, or
+`getOption("xrdbi.max_cells")`). Pass `force = TRUE` to read anyway, or
+filter more dimensions. Here the limit is set low to show it:
+
+```{r}
+try(collect(sst, max_cells = 500))
+nrow(collect(sst, max_cells = 500, force = TRUE))
+dbDisconnect(con)
+```
+
+## Where next
+
+* `?tbl_xarray` lists the verbs and filter forms.
+* [Parameters](parameters.html) passes values from R into statements you
+  write yourself, for anything the verbs cannot say.
+* [From arrays to rows](rendering.html) covers what `collect()` returns.

@@ -32,7 +32,24 @@ reference:
       - xr_dataset
 
 articles:
+  - title: Querying
+    navbar: Querying
+    contents:
+      - articles/dplyr
+      - articles/parameters
+      - articles/rendering
+      - articles/data-sources
+  - title: Grids and geometry
+    navbar: Grids and geometry
+    contents:
+      - articles/rasters
+      - articles/chunk-maps
+      - articles/curvilinear
   - title: Setting up
-    navbar: ~
+    navbar: Setting up
     contents:
       - articles/python-environments
+  - title: Background
+    navbar: Background
+    contents:
+      - articles/design

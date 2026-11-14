@@ -1,0 +1,190 @@
+---
+title: "Curvilinear grids and vector cubes"
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+Two kinds of data cube are not regular rasters in longitude and
+latitude: grids whose coordinates are 2-D arrays, and vector data
+cubes, whose spatial dimension is a set of geometries. Both render as
+rows like any other result. This article shows what else works on them.
+
+```{r}
+library(xrdbi)
+library(DBI)
+library(dplyr, warn.conflicts = FALSE)
+```
+
+## Regular in what?
+
+`rotated_pole.nc` holds temperature over Europe on a grid that is
+regular in a rotated-pole frame: its `x` and `y` coordinates are 1-D
+and evenly spaced, and the [Rasters](rasters.html) article renders it
+as a raster in that frame. Transform its cell centres to ordinary
+longitude and latitude, and the same grid is curvilinear: each cell has
+its own longitude and latitude, held in 2-D arrays. The grid has not
+changed, only the frame it is described in.
+[*Regular in what?*](https://hypertidy.github.io/regular-in-what/) is a
+short book about that distinction.
+
+The file's grid mapping lacks the `grid_mapping_name` pyproj needs, so
+the builder supplies it, then adds 2-D `lon` and `lat` as coordinates:
+
+```{r}
+f <- system.file("extdata/autotest/rotated_pole.nc", package = "xrdbi")
+make_curvi <- sprintf("
+import xarray as xr, numpy as np, pyproj
+ds = xr.open_dataset('%s', engine='netcdf4')
+cf = dict(ds.projection.attrs, grid_mapping_name='rotated_latitude_longitude')
+to_lonlat = pyproj.Transformer.from_crs(pyproj.CRS.from_cf(cf), 'OGC:CRS84',
+                                        always_xy=True)
+X, Y = np.meshgrid(ds.x.values, ds.y.values)
+lon, lat = to_lonlat.transform(X, Y)
+curvi = ds.assign_coords(lon=(('y', 'x'), lon), lat=(('y', 'x'), lat))
+", f)
+reticulate::py_run_string(make_curvi)
+con <- dbConnect(xarray(), object = reticulate::py_eval("curvi", convert = FALSE))
+con
+dbListFields(con, "tg")
+```
+
+The 2-D coordinates are columns of every row:
+
+```{r}
+dbGetQuery(con, "ds.tg.isel(y=50, x=slice(60, 63))")
+```
+
+## Filtering on longitude and latitude
+
+A filter on `lon` and `lat` cannot be a `.sel()`, because they are not
+dimensions. The tbl evaluates the filter on the coordinates when it
+compiles, narrows the read to the block of `y` and `x` holding every
+cell that passes, and keeps the filter itself as an exact pandas query
+on that block. Here, a box around Oslo:
+
+```{r}
+oslo <- tbl(con, "tg") |> filter(lon > 10, lon < 12, lat > 59, lat < 61)
+show_query(oslo)
+collect(oslo)
+```
+
+The block is 5 by 3 cells of the 108 by 137 grid, and 13 of those 15
+pass. Only the block is read.
+
+## Nearest points
+
+xarray's `NDPointIndex` (it needs scipy) finds the nearest cell by
+longitude and latitude on a grid like this, pointwise for vectors of
+points. It is an ordinary statement, with the points passed as
+`params`:
+
+```{r}
+dbGetQuery(con,
+  "ds.set_xindex(('lat', 'lon'), xr.indexes.NDPointIndex).tg.sel(
+     lat=xr.DataArray(lats, dims='pt'), lon=xr.DataArray(lons, dims='pt'),
+     method='nearest')",
+  params = list(lats = c(59.91, 48.86), lons = c(10.75, 2.35)))
+dbDisconnect(con)
+```
+
+## Chunk envelopes
+
+Many curvilinear products are stored with only the 2-D longitude and
+latitude, and no 1-D coordinates for the grid's own dimensions. Here is
+the same grid written that way, as a chunked zarr store:
+
+```{r}
+path <- file.path(tempfile(), "curvi.zarr")
+dir.create(dirname(path))
+reticulate::py_run_string(sprintf(
+  "curvi.drop_vars(['x', 'y', 'projection']).to_zarr('%s', mode='w',
+     zarr_format=3, consolidated=False, encoding={'tg': {'chunks': (36, 46)}})",
+  path))
+z <- dbConnect(xarray(), path, engine = "zarr", consolidated = FALSE)
+z
+```
+
+`xr_chunks()` recognises 2-D longitude and latitude (by CF
+`standard_name`, units, or common names) and gives each chunk the
+envelope of its block of them. With no 1-D coordinates to place the
+chunks, `geometry` is that envelope, in longitude and latitude
+(`OGC:CRS84`):
+
+```{r}
+ch <- xr_chunks(z, "ds.tg")
+ch[, c("y_chunk", "x_chunk", "lon_min", "lon_max", "lat_min", "lat_max")]
+wk::wk_crs(ch$geometry)
+```
+
+```{r envelopes, fig.width = 6, fig.height = 5, fig.alt = "The nine chunks of a rotated-pole grid over Europe, drawn as overlapping longitude-latitude envelopes around the cell centres"}
+cells <- dbGetQuery(z, "ds.tg")
+plot(ch$geometry, border = "firebrick", lwd = 2)
+points(cells$lon, cells$lat, pch = ".",
+       col = ifelse(is.na(cells$tg), "grey80", "grey30"))
+```
+
+The envelopes overlap, because the chunks are rectangles in the rotated
+frame and not in longitude and latitude, and they bound the cell
+centres, so they are about half a cell inside the cells' edges.
+
+A raster rendering needs regular 1-D coordinates, so `xr_raster()`
+refuses this store, and says why:
+
+```{r}
+try(xr_raster(z, "ds.tg"))
+dbDisconnect(z)
+```
+
+## Vector data cubes
+
+A vector data cube has a dimension of geometries in place of a grid, as
+[xvec](https://xvec.readthedocs.io) builds. Zonal statistics of the TRMM
+rainfall over three boxes given from R, through xvec (it needs
+geopandas, rasterio and rioxarray):
+
+```{r}
+reticulate::py_require(c("xvec", "geopandas", "rasterio", "rioxarray"))
+invisible(reticulate::import("xvec"))   # registers the .xvec accessor
+trmm <- dbConnect(xarray(),
+                  system.file("extdata/autotest/trmm.nc", package = "xrdbi"))
+boxes <- wk::rct(c(-80, -75, -72), c(-20, -16, -14),
+                 c(-76, -72, -70), c(-16, -12, -10), crs = "EPSG:4326")
+zonal <- "ds.pcp.xvec.zonal_stats(boxes, x_coords='longitude',
+  y_coords='latitude', stats=['mean', 'max'], method='rasterize', n_jobs=1)"
+cube <- dbGetQuery(trmm, zonal, params = list(boxes = wk::as_wkb(boxes)))
+cube
+```
+
+The geometry arrives as `wk::wkb()` with the CRS of the cube's geometry
+index, so it converts straight to sf:
+
+```{r}
+wk::wk_crs(cube$geometry)
+sf::st_as_sf(cube)
+```
+
+```{r cube, fig.width = 5, fig.height = 5, fig.alt = "TRMM rainfall over Peru with three boxes outlined and labelled with their mean rainfall, highest in the north-east"}
+means <- cube[cube$zonal_statistics == "mean", ]
+r <- xr_raster(trmm, "ds.pcp.isel(time=0)")
+gdalraster::plot_raster(r, main = "TRMM rainfall and zonal means")
+plot(means$geometry, add = TRUE, border = "firebrick", lwd = 2)
+bb <- as.data.frame(unclass(boxes))   # the boxes' corners, in cube order
+text((bb$xmin + bb$xmax) / 2, (bb$ymin + bb$ymax) / 2,
+     labels = signif(means$pcp, 2), col = "white", font = 2)
+```
+
+A vector cube has no raster rendering:
+
+```{r}
+try(xr_raster(trmm, zonal, params = list(boxes = wk::as_wkb(boxes))))
+dbDisconnect(trmm)
+```
+
+## Where next
+
+* [Parameters](parameters.html) covers how geometry is passed from R.
+* [Chunk maps](chunk-maps.html) has more on `xr_chunks()`.
+* [*Regular in what?*](https://hypertidy.github.io/regular-in-what/)
+  on grids, frames and the curvilinear confusion.

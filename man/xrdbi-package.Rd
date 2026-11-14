@@ -8,6 +8,15 @@
 \description{
 Treats a live Python session holding an 'xarray' \url{https://xarray.dev} object as a database connection. Tables are variables, fields are dimensions and coordinates, and queries are Python expressions (or compiled from a small structured spec or from 'dplyr' verbs) evaluated lazily against the dataset. Fetching renders the tidy long form, one row per cell, built in R from the values; results can also render as an in-memory raster.
 }
+\section{Articles}{
+
+The \href{https://mdsumner.github.io/xrdbi/}{package website} has a Get
+started guide and articles with live examples: querying with dplyr,
+parameters, the shape and types of results, data sources, rasters,
+chunk maps, curvilinear grids and vector cubes, Python environments,
+and design notes.
+}
+
 \section{How xarray maps to DBI}{
 
 A connection holds one xarray Dataset, open in the Python session.

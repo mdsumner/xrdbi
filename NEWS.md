@@ -35,6 +35,15 @@
   gdal-r-python image, and how to check what you have. The deploy step
   installs rsync, which the image lacks and the deploy action needs.
 
+* Eight more articles, built live on the site: "Querying with dplyr" (how
+  each verb compiles and what gets read), "Parameters", "From arrays to
+  rows" (the shape and types of results, and when work happens), "Data
+  sources" (a cookbook: netCDF over HTTPS, many files, zarr on Google
+  Cloud and S3, GDAL rasters and VRTs, virtual stores), "Rasters",
+  "Chunk maps", "Curvilinear grids and vector cubes", and "Design notes".
+  The articles index groups them, and Get started and `?xrdbi` link to
+  them.
+
 ## Chunk maps
 
 * New `xr_chunks()` maps the storage chunks a selection touches: one row

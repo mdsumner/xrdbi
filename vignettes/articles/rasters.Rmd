@@ -1,0 +1,142 @@
+---
+title: "Rasters"
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+A fetch renders rows, one per cell. `xr_raster()` renders the same
+statement as pixels instead: a plain vector of values in left-to-right,
+top-to-bottom order, with a `gis` attribute giving the extent, the
+dimensions, the CRS and the data type. That is the form gdalraster's
+`read_ds()` returns, so gdalraster can plot it. No GDAL dataset is
+created, and gdalraster is only needed for the plotting.
+
+```{r}
+library(xrdbi)
+library(DBI)
+ex <- function(f) system.file("extdata/autotest", f, package = "xrdbi")
+
+trmm <- dbConnect(xarray(), ex("trmm.nc"))
+r <- xr_raster(trmm, "ds.pcp.isel(time=0)")
+str(attr(r, "gis"))
+```
+
+```{r trmm, fig.width = 5, fig.height = 5, fig.alt = "A month of TRMM rainfall over Peru and the eastern Pacific, wettest in the north-east"}
+gdalraster::plot_raster(r, legend = TRUE, main = "TRMM rainfall, January 2011")
+```
+
+`xr_raster()` takes a connection and a statement, or a result from
+`dbSendQuery()`, and `params` as the query functions do. It is guarded
+by `max_cells` like a fetch.
+
+## Which dimensions are y and x
+
+The selected DataArray must squeeze to two dimensions, (y, x), or three,
+(band, y, x). y and x are the last two dimensions, whatever their
+names. Data stored the other way round, (lon, lat), would render
+transposed, so put it in order in the statement, with
+`.transpose('lat', 'lon')`. Anything else is an error that says what is
+left:
+
+```{r}
+try(xr_raster(trmm, "ds.pcp.isel(time=0, latitude=0)"))
+```
+
+The y and x coordinates must be 1-D, numeric and regularly spaced, to
+the precision they are stored in (float32 grids are fine). They can run
+in either direction: rows and columns are put in top-left order, and
+the extent assumes the coordinates are cell centres. A curvilinear grid
+(2-D longitude and latitude) has no such rendering, and neither does a
+vector data cube; both are refused with the reason.
+
+## Bands
+
+A third dimension becomes bands, band-sequential: all of band 1, then
+band 2. Here is a small RGB GeoTIFF through the gdalxarray engine (it
+needs the GDAL Python bindings). `multidim = FALSE` opens it as a
+classic raster, one variable `band_data` over (band, y, x):
+
+```{r rgb, fig.width = 4, fig.height = 4, fig.alt = "A 50 by 50 pixel RGB satellite image"}
+tif <- dbConnect(xarray(), ex("rgbsmall.tif"), engine = "gdalxarray",
+                 multidim = FALSE)
+rgb <- xr_raster(tif, "ds.band_data")
+attr(rgb, "gis")$dim
+attr(rgb, "gis")$datatype
+gdalraster::plot_raster(rgb, nbands = 3)
+```
+
+`as_list = TRUE` gives a list of band vectors instead, as
+`read_ds(as_list = TRUE)` does:
+
+```{r}
+bands <- xr_raster(tif, "ds.band_data", as_list = TRUE)
+lengths(bands)
+dbDisconnect(tif)
+```
+
+## The CRS
+
+`srs` is the CRS as WKT, found in this order:
+
+1. an index that carries one: xproj's `CRSIndex`, which gdalxarray sets,
+   or rasterix's `RasterIndex`
+2. a `crs_wkt` or `spatial_ref` attribute, on a `spatial_ref` or `crs`
+   coordinate, on the variable named by the CF `grid_mapping` attribute,
+   or on a dataset variable named `spatial_ref` or `crs`
+3. the CF parameters of the `grid_mapping` variable, through pyproj
+
+and `""` when none is found, as for the TRMM file. A rotated-pole grid
+shows the ladder at work. `rotated_pole.nc` stores temperature on a grid
+that is regular in rotated coordinates, with a CF grid mapping holding
+the pole's position but not the `grid_mapping_name` that says what kind
+of mapping it is. Read through netCDF4, nothing names the CRS:
+
+```{r}
+nc <- dbConnect(xarray(), ex("rotated_pole.nc"), engine = "netcdf4")
+names(reticulate::py_to_r(xr_dataset(nc)$projection$attrs))
+attr(xr_raster(nc, "ds.tg"), "gis")$srs
+dbDisconnect(nc)
+```
+
+GDAL recognises the rotated pole from those parameters, and gdalxarray
+carries the result on its `CRSIndex`:
+
+```{r}
+gd <- dbConnect(xarray(), ex("rotated_pole.nc"), engine = "gdalxarray",
+                multidim = FALSE)
+tg <- xr_raster(gd, "ds.band_data")
+cat(substr(attr(tg, "gis")$srs, 1, 200), "...\n")
+```
+
+Supplying the missing name in a builder lets pyproj build the CRS from
+the CF parameters instead, with the same grid:
+
+```{r}
+fixed <- dbConnect(xarray(), builder = function(xr) {
+  ds <- xr$open_dataset(ex("rotated_pole.nc"), engine = "netcdf4")
+  ds$projection$attrs$update(list(grid_mapping_name = "rotated_latitude_longitude"))
+  ds
+})
+tg2 <- xr_raster(fixed, "ds.tg")
+identical(attr(tg2, "gis")$bbox, attr(tg, "gis")$bbox)
+grepl("Pole rotation", attr(tg2, "gis")$srs)
+dbDisconnect(fixed)
+```
+
+```{r rotated, fig.width = 6, fig.height = 5, fig.alt = "Mean temperature over Europe on a rotated-pole grid, drawn in rotated coordinates"}
+gdalraster::plot_raster(tg, legend = TRUE, main = "tg, in rotated coordinates")
+dbDisconnect(gd)
+dbDisconnect(trmm)
+```
+
+This grid is regular in its own frame, the rotated pole, and only
+curvilinear when drawn in ordinary longitude and latitude. The
+[curvilinear grids](curvilinear.html) article takes the other view of
+the same file.
+
+## Where next
+
+* `?xr_raster` documents the arguments and the `gis` attribute.
+* [Chunk maps](chunk-maps.html) show the storage blocks under a slab.

@@ -1,3 +1,10 @@
+#' @section Articles:
+#' The [package website](https://mdsumner.github.io/xrdbi/) has a Get
+#' started guide and articles with live examples: querying with dplyr,
+#' parameters, the shape and types of results, data sources, rasters,
+#' chunk maps, curvilinear grids and vector cubes, Python environments,
+#' and design notes.
+#'
 #' @section How xarray maps to DBI:
 #' A connection holds one xarray Dataset, open in the Python session.
 #' * **Tables** are its variables, data variables and coordinates alike:
