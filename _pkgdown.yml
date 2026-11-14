@@ -1,0 +1,38 @@
+url: https://mdsumner.github.io/xrdbi/
+
+template:
+  bootstrap: 5
+
+reference:
+  - title: Overview
+    contents:
+      - xrdbi-package
+  - title: Connect
+    desc: Open a connection to an xarray Dataset and look around it.
+    contents:
+      - xarray
+      - '`dbConnect,XarrayDriver-method`'
+      - XarrayConnection-class
+  - title: Query
+    desc: >
+      Python statements, compiled selections, dplyr verbs, and whole
+      variables.
+    contents:
+      - XarrayResult-class
+      - xr_query
+      - tbl_xarray
+      - '`dbReadTable,XarrayConnection,character-method`'
+  - title: Render other ways
+    desc: A slab as an in-memory raster, and the storage chunks under a selection.
+    contents:
+      - xr_raster
+      - xr_chunks
+  - title: Python objects
+    contents:
+      - xr_dataset
+
+articles:
+  - title: Setting up
+    navbar: ~
+    contents:
+      - articles/python-environments

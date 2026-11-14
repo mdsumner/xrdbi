@@ -5,3 +5,9 @@
 ^README\.Rmd$
 ^cran-comments\.md$
 ^tools$
+^_pkgdown\.yml$
+^docs$
+^pkgdown$
+^\.github$
+^vignettes/articles$
+^vignettes/.*\.Rmd\.orig$

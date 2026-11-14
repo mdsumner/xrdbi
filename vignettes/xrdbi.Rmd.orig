@@ -1,0 +1,193 @@
+---
+title: "Get started with xrdbi"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Get started with xrdbi}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+<!-- vignettes/xrdbi.Rmd is generated from xrdbi.Rmd.orig: edit the .orig and
+     rerun tools/precompute.R (it needs Python with xarray and netCDF4) -->
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+## the outputs are computed once, where Python is available, and shipped
+## as text: CRAN builds this vignette without Python. Paths into the
+## local R library are shortened to <library> in the output.
+local({
+  lib <- dirname(system.file(package = "xrdbi"))
+  hook <- knitr::knit_hooks$get("output")
+  knitr::knit_hooks$set(output = function(x, options) {
+    hook(gsub(lib, "<library>", x, fixed = TRUE), options)
+  })
+})
+```
+
+xrdbi treats an [xarray](https://xarray.dev) Dataset, open in a Python
+session that R reaches through reticulate, as a database. You query it
+with [DBI](https://dbi.r-dbi.org) or with dplyr verbs, and each query
+comes back as a tidy data frame: one row per cell, a column per
+coordinate. The arrays stay in Python until you fetch, and only the cells
+you select are read.
+
+This vignette uses a small file that ships with the package, so it needs
+nothing but Python with xarray and netCDF4. reticulate provisions those
+for you if no Python is configured; the
+[Python environments](https://mdsumner.github.io/xrdbi/articles/python-environments.html)
+article covers the other setups.
+
+```{r}
+library(xrdbi)
+library(DBI)
+```
+
+## Connect
+
+`dbConnect()` with the `xarray()` driver opens anything xarray can open:
+a path, a URL, a zarr store. This file is January 2011 of TRMM's monthly
+rainfall product (3B43), cut to a 10 degree box over Peru and the
+Pacific off its coast.
+
+```{r}
+f <- system.file("extdata/autotest/trmm.nc", package = "xrdbi")
+con <- dbConnect(xarray(), f)
+con
+```
+
+Opening reads the metadata only. The **tables** of the connection are
+its variables, coordinates included, and the **fields** of a table are
+the columns its rows will have: its dimensions, then any other
+coordinates, then the variable itself.
+
+```{r}
+dbListTables(con)
+dbGetInfo(con)$tables   # data variables only
+dbListFields(con, "pcp")
+dbGetInfo(con)$sizes
+```
+
+## Query with Python
+
+A query is a Python expression over `ds`, the Dataset (and `xr`, the
+xarray module). Anything xarray can select works:
+
+```{r}
+dbGetQuery(con, "ds.pcp.isel(time=0, latitude=0, longitude=slice(0, 4))")
+
+dbGetQuery(con, "ds.pcp.sel(latitude=-15, longitude=-75, method='nearest')")
+```
+
+A selection is lazy: `dbSendQuery()` describes the cells and reads
+nothing, and `dbFetch()` renders them, in pages if you like.
+
+```{r}
+res <- dbSendQuery(con, "ds.pcp.sel(latitude=slice(-12, -10))")
+res
+dbFetch(res, n = 3)
+dbFetch(res, n = 3)
+dbGetRowCount(res)
+dbClearResult(res)
+```
+
+A statement that computes, such as a mean, runs in full when it is sent,
+so use it on a selection rather than on a whole variable that is too big
+to compute.
+
+```{r}
+dbGetQuery(con, "ds.pcp.mean(['time', 'longitude'])") |> head()
+```
+
+Values from R go in by name with `params`. They become Python variables
+in the statement's scope: numbers and vectors as numpy, dates and times
+as `datetime64`.
+
+```{r}
+dbGetQuery(con,
+  "ds.pcp.isel(time=0).sel(latitude=lat, longitude=lon, method='nearest')",
+  params = list(lat = -15.1, lon = -75.3))
+```
+
+`xr_query()` writes a statement from a structured selection, if you
+would rather not write the Python. The result is just a string.
+
+```{r}
+q <- xr_query(vars = "pcp", sel = list(latitude = c(-12, -11)),
+              isel = list(time = 0))
+q
+nrow(dbGetQuery(con, q))
+```
+
+## Query with dplyr
+
+`tbl()` gives a lazy table over one variable. Filters on dimensions are
+pushed into xarray as a selection, so only those cells are read, and
+`show_query()` prints the statement the verbs compile to.
+
+```{r}
+library(dplyr, warn.conflicts = FALSE)
+rain <- tbl(con, "pcp") |>
+  filter(latitude > -14, latitude < -13, longitude <= -78)
+show_query(rain)
+collect(rain)
+```
+
+Printing a lazy table shows the statement and a preview of its first
+rows, reading at most one chunk:
+
+```{r}
+rain
+```
+
+A filter on the values themselves cannot be a selection, so it runs in
+Python on the selected cells before they come to R. These are the
+wettest cells of the month:
+
+```{r}
+tbl(con, "pcp") |> filter(pcp > 0.5) |> collect()
+```
+
+## Guards
+
+Reading a whole variable is one call, but every read that materializes
+cells is guarded: above `getOption("xrdbi.max_cells")` (10 million by
+default) it errors with the size, unless you pass `force = TRUE`. Here
+the limit is set low to show it.
+
+```{r}
+nrow(dbReadTable(con, "pcp"))
+try(dbReadTable(con, "pcp", max_cells = 100))
+```
+
+## As a raster
+
+The same statement can render as a raster instead of rows: `xr_raster()`
+returns the pixel values with a `gis` attribute, in the form gdalraster's
+`read_ds()` returns.
+
+```{r}
+r <- xr_raster(con, "ds.pcp.isel(time=0)")
+str(attr(r, "gis"))
+```
+
+## The Python objects
+
+The connection is a veneer: `xr_dataset()` hands you the Dataset itself,
+unconverted, for anything the DBI methods cannot express.
+
+```{r}
+ds <- xr_dataset(con)
+ds$pcp$attrs$long_name
+dbDisconnect(con)
+```
+
+## Where next
+
+* `?xrdbi` maps the functions by task and lists the options.
+* `?tbl_xarray` has the full list of verbs and filter forms, and how
+  each is compiled.
+* The [Python environments](https://mdsumner.github.io/xrdbi/articles/python-environments.html)
+  article covers zarr, cloud stores, GDAL and conda.
+* The [README](https://github.com/mdsumner/xrdbi#readme) runs the same
+  queries against NOAA OISST over HTTPS, ERA5 in zarr on Google Cloud,
+  and a Sentinel-2 COG.

@@ -22,6 +22,18 @@
   onward with a See also section, and `?dbConnect` says what
   `multidim = FALSE` does for the gdalxarray engine.
 
+* A pkgdown site (https://mdsumner.github.io/xrdbi/), built by a GitHub
+  Action in the `ghcr.io/hypertidy/gdal-r-python` image so live articles
+  can reach GDAL and public cloud data. The reference index is grouped
+  by task.
+
+* New "Get started" vignette, pre-computed: its outputs are knitted
+  locally from `vignettes/xrdbi.Rmd.orig` on the bundled `trmm.nc`
+  (`tools/precompute.R`), so it builds on CRAN without Python. New
+  "Python environments" article: letting reticulate manage Python, your
+  own Python, conda and pixi (and what reticulate needs there), the
+  gdal-r-python image, and how to check what you have.
+
 ## Chunk maps
 
 * New `xr_chunks()` maps the storage chunks a selection touches: one row
