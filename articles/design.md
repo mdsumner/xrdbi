@@ -1,0 +1,126 @@
+# Design notes
+
+xrdbi is small, and most of what it does follows from a few decisions.
+This article records them and the reasons for them.
+
+## A connection is a handle to a live object
+
+The “database” is an xarray Dataset in a Python session that R reaches
+through reticulate, and the connection is a handle to that object. DBI
+gives the vocabulary:
+
+- tables are variables, data variables and coordinates alike
+- fields are a variable’s dimensions, then its other coordinates, then
+  the variable itself: the columns of its rows
+- a statement is a Python expression over `ds` and `xr`
+
+Nothing of xarray is ported or wrapped: xarray opens the data, selects
+it, and computes on it, with every engine and index it has. xrdbi adds
+the mapping to rows, and the guards.
+
+## Python is the query language
+
+A statement is Python, not SQL, because xarray’s selection language
+already says what array queries need: labels, positions, slices,
+nearest-neighbour lookups, pointwise selection, and any computation
+after. A SQL dialect would be a smaller language that compiles to the
+same thing.
+
+[`xr_query()`](https://mdsumner.github.io/xrdbi/reference/xr_query.md)
+and the dplyr verbs are compilers to that language, and their output is
+a plain string that
+[`show_query()`](https://dplyr.tidyverse.org/reference/explain.html)
+prints and
+[`dbGetQuery()`](https://dbi.r-dbi.org/reference/dbGetQuery.html) runs
+like any other. The compiled expression is the contract: it can be read,
+logged, kept with a result, and run by hand. Where a compiler cannot
+express something, the statement can, and `params` passes R values into
+it by name instead of pasting them into source.
+
+## The long form is xarray’s
+
+A result renders as `to_dataframe().reset_index()` would give it: one
+row per cell, every coordinate a column. That is xarray’s own long form,
+with its column order and broadcasting, so a result means the same in R
+as in Python, and nothing about it is xrdbi’s invention.
+
+The rows are built in R. Only the values cross from Python, column by
+column, and the coordinate columns are repeated with
+[`rep()`](https://rdrr.io/r/base/rep.html) for the rows asked for. That
+is faster than converting a pandas frame (in our measurements, ten
+million rows in about half a second, where reticulate’s conversion of
+one pandas datetime column took about two seconds per million rows) and
+more faithful: each column keeps its type, and `NaT` becomes `NA`.
+
+The data frame is one rendering of a result, not the result.
+[`xr_raster()`](https://mdsumner.github.io/xrdbi/reference/xr_raster.md)
+renders the same statement as pixels with a georeferencing attribute,
+and
+[`xr_chunks()`](https://mdsumner.github.io/xrdbi/reference/xr_chunks.md)
+renders the storage under it. The array, the rows, the raster and the
+chunk map are views of one selection.
+
+## Lazy where xarray is lazy
+
+[`dbSendQuery()`](https://dbi.r-dbi.org/reference/dbSendQuery.html)
+evaluates the statement, and a selection reads nothing there, because
+xarray’s arrays are lazy until their values are needed. The first fetch
+reads. A statement that computes runs when it is sent, because that is
+when Python evaluates it; xrdbi does not pretend otherwise. The
+documentation says so rather than trying to guard it, and the advice is
+to select first, then compute.
+
+## Guards, not surprises
+
+The stores xarray opens can be enormous: a whole variable of the ERA5
+reanalysis is over a trillion cells. Every read that materializes cells
+is sized first and refused above a limit, ten million cells by default,
+with the size in the message. The limit is an option and an argument,
+and `force = TRUE` reads anyway.
+[`xr_chunks()`](https://mdsumner.github.io/xrdbi/reference/xr_chunks.md)
+has its own limit on rows, since a store can have a million chunks.
+
+## A veneer, not a jail
+
+[`xr_dataset()`](https://mdsumner.github.io/xrdbi/reference/xr_dataset.md)
+returns the Dataset and
+[`xr_module()`](https://mdsumner.github.io/xrdbi/reference/xr_dataset.md)
+the xarray module, unconverted, so anything the DBI methods cannot
+express is one step away. A connection can also adopt any Dataset built
+in Python. xrdbi never needs to be the only way in.
+
+## Pixels here, chunks elsewhere
+
+xrdbi gives pixel-level rows on demand from anything xarray can open.
+The chunk-level view of an array store, as a relation of chunk keys,
+byte ranges and encoded blobs with grid math done client-side, is
+deliberately a different project, sketched in the design note [DBI for
+xarray](https://github.com/mdsumner/gdal-r-python/blob/main/dbi-xarray/dbi-for-xarray.md).
+[`xr_chunks()`](https://mdsumner.github.io/xrdbi/reference/xr_chunks.md)
+is the bridge: it maps the storage chunks under a selection from
+metadata alone, without reading data.
+[storecard](https://github.com/hypertidy/storecard) works on the
+metadata side of the same question: a small description of an array
+store’s grid, chunking and byte locations, built without reading a data
+chunk.
+
+## Not yet
+
+- [`summarise()`](https://dplyr.tidyverse.org/reference/summarise.html)
+  compiled to xarray reductions in the dplyr layer
+- streaming fetch aligned to chunks: `dbFetch(n = )` builds only the
+  rows asked for, but the first fetch reads the values of the whole
+  selection
+- DataTree groups as schemas: `open = "open_datatree"` connects, but the
+  table listing assumes a flat Dataset
+- writing:
+  [`dbWriteTable()`](https://dbi.r-dbi.org/reference/dbWriteTable.html)
+  as `to_zarr()`, or an icechunk commit
+- transactions:
+  [`dbBegin()`](https://dbi.r-dbi.org/reference/transactions.html),
+  [`dbCommit()`](https://dbi.r-dbi.org/reference/transactions.html) and
+  [`dbRollback()`](https://dbi.r-dbi.org/reference/transactions.html)
+  error for now. The intended mapping is icechunk sessions and commits,
+  where a readonly session at a snapshot is an AS OF query
+- a switch for coordinates in renderings: 2-D coordinates are broadcast
+  into every row of a variable, which is faithful but can be heavy

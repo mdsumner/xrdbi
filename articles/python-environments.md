@@ -1,0 +1,174 @@
+# Python environments
+
+xrdbi runs xarray in a Python session that R reaches through
+[reticulate](https://rstudio.github.io/reticulate/). Which Python that
+is, and what is installed in it, decides which data you can open. There
+are four ways to set it up, from least to most effort:
+
+1.  let reticulate manage a Python for you
+2.  use a Python you manage yourself
+3.  use a conda (or pixi, or mamba) environment
+4.  use the `gdal-r-python` container image
+
+Only the GDAL engine, gdalxarray, narrows the choice: it needs the GDAL
+Python bindings, which pip cannot install, so it works in 3 and 4 and in
+2 only when GDAL is installed there.
+
+## 1. Let reticulate manage it
+
+With no Python configured, reticulate builds one with
+[uv](https://docs.astral.sh/uv/), from the requirements packages declare
+with
+[`reticulate::py_require()`](https://rstudio.github.io/reticulate/reference/py_require.html).
+Loading xrdbi declares the core:
+
+- xarray, which brings pandas and numpy
+- netCDF4, the engine for local netCDF-3 and netCDF-4 files
+
+That is all the [Get
+started](https://mdsumner.github.io/xrdbi/articles/xrdbi.md) vignette
+needs. Every other source needs its engine, declared the same way,
+ideally before the first connection:
+
+``` r
+library(xrdbi)
+reticulate::py_require("zarr")                   # zarr stores
+reticulate::py_require(c("zarr", "gcsfs"))       # zarr on Google Cloud
+reticulate::py_require(c("zarr", "s3fs"))        # zarr on S3
+reticulate::py_require(c("h5netcdf", "h5py", "fsspec", "aiohttp"))
+                                                 # netCDF/HDF5 over HTTPS
+reticulate::py_require("dask")                   # open_mfdataset
+reticulate::py_require(c("xvec", "geopandas"))   # vector data cubes
+```
+
+If Python has already started, reticulate switches to an environment
+that adds them. uv caches what it downloads, so later sessions start
+quickly.
+
+This is the easy path, and it covers zarr, netCDF and HDF5, local or
+remote. It cannot give you gdalxarray: GDAL’s Python bindings come from
+a GDAL installation, not from PyPI.
+
+## 2. A Python you manage yourself
+
+Point reticulate at an interpreter with `RETICULATE_PYTHON`, in
+`~/.Renviron` or before reticulate starts:
+
+``` r
+Sys.setenv(RETICULATE_PYTHON = "/path/to/venv/bin/python")
+library(xrdbi)
+```
+
+A virtual environment that is activated in the shell (`VIRTUAL_ENV` is
+set) is found without it. Either way, reticulate uses that Python as it
+is: it does not install into it, even what `py_require()` declares.
+Install the packages yourself:
+
+``` sh
+/path/to/venv/bin/python -m pip install xarray netCDF4 zarr h5netcdf
+```
+
+gdalxarray works here if this Python has the GDAL bindings
+(`from osgeo import gdal` succeeds), as a system Python with GDAL from
+your distribution often does.
+
+## 3. conda, pixi or mamba
+
+conda-forge has GDAL and its Python bindings, so a conda environment can
+hold everything, gdalxarray included:
+
+``` sh
+conda create -n xr -c conda-forge python xarray netcdf4 zarr gcsfs \
+  h5netcdf gdal gdalxarray libpython micromamba
+conda activate xr
+```
+
+Three things need care, each found by testing:
+
+- **reticulate does not look at the activated environment.** It honours
+  `VIRTUAL_ENV`, not `CONDA_PREFIX`, and with requirements declared it
+  builds its own environment from PyPI instead. Set the interpreter
+  explicitly:
+
+  ``` sh
+  export RETICULATE_PYTHON="$CONDA_PREFIX/bin/python"
+  ```
+
+- **reticulate needs the shared libpython**, which conda-forge ships as
+  its own package, `libpython`. Without it, reticulate stops with
+  “Python shared library not found”.
+
+- **reticulate wants a conda binary.** For a Python in a conda-layout
+  environment, it runs `conda run` once to learn the environment’s
+  `PATH`, and fails with “Unable to find conda binary” if no conda,
+  mamba or micromamba is on `PATH` or in the usual places. That is the
+  case in pixi environments, hence `micromamba` in the environment
+  above.
+
+The draft conda-forge recipe in
+[`tools/conda`](https://github.com/mdsumner/xrdbi/tree/main/tools/conda)
+handles all three: its activation script sets `RETICULATE_PYTHON`, and
+it depends on `libpython` and `micromamba`.
+
+## 4. The gdal-r-python image
+
+[`ghcr.io/hypertidy/gdal-r-python`](https://github.com/hypertidy/gdal-r-ci#gdal-r-python)
+is a container image with R, GDAL, the GDAL Python bindings and a Python
+geospatial stack, including xarray, zarr, netCDF4, h5netcdf, dask,
+rasterix and gdalxarray. `RETICULATE_PYTHON` is set to its Python, so
+reticulate uses it as is. This site is built in it.
+
+``` sh
+docker run --rm -it ghcr.io/hypertidy/gdal-r-python:latest R
+```
+
+``` r
+pak::pak("mdsumner/xrdbi")
+```
+
+Add Python packages with uv, into the image’s Python. The README’s ERA5
+example needs gcsfs, and vector cubes need xvec:
+
+``` sh
+uv pip install --python "$RETICULATE_PYTHON" gcsfs xvec
+```
+
+The image runs development dask with its array query planning turned on,
+under which xarray’s `open_mfdataset()` fails with a
+`NotImplementedError`. Turn it off for the container, as this site’s
+build does:
+
+``` sh
+docker run --rm -it -e DASK_ARRAY__QUERY_PLANNING=False ghcr.io/hypertidy/gdal-r-python:latest R
+```
+
+## Check what you have
+
+[`reticulate::py_config()`](https://rstudio.github.io/reticulate/reference/py_config.html)
+says which Python was chosen and why, and xarray lists the engines it
+can use:
+
+``` r
+reticulate::py_config()
+reticulate::import("xarray")$backends$list_engines()
+reticulate::py_module_available("gdalxarray")
+```
+
+An engine that is not installed fails at
+[`dbConnect()`](https://dbi.r-dbi.org/reference/dbConnect.html), with
+xarray’s message naming it and listing the engines it has (“unrecognized
+engine ‘zarr’ must be one of your download engines: …”). Declare it with
+`py_require()` (setup 1) or install it into your Python (2, 3 and 4).
+
+## Credentials and network settings
+
+Remote data is read by Python, so Python’s settings apply:
+
+- fsspec-based engines (zarr on gcsfs or s3fs, h5netcdf over HTTPS) take
+  `storage_options`, passed through
+  [`dbConnect()`](https://dbi.r-dbi.org/reference/dbConnect.html), for
+  example `storage_options = reticulate::dict(token = "anon")` for a
+  public Google Cloud bucket.
+- GDAL reads its configuration from the process environment when it
+  accesses data, so `Sys.setenv(AWS_NO_SIGN_REQUEST = "YES")` from R
+  works for public S3 buckets read through gdalxarray.
