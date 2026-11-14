@@ -208,8 +208,10 @@ xr_raster <- function(x, statement = NULL, as_list = FALSE,
 ##    PARENT dataset (CF convention: the grid-mapping variable is a
 ##    0-d data variable and does NOT propagate through selection)
 ## 3. a variable named spatial_ref/crs in the parent dataset
-## In every case we only read an authored crs_wkt/spatial_ref WKT
-## string; CF parameter interpretation is deliberately out of scope.
+## Tiers 1-3 read only an authored crs_wkt/spatial_ref WKT string.
+## 4. last, only when nothing authored was found: the CF parameters of the
+##    grid_mapping variable from tier 2 (grid_mapping_name and the rest),
+##    interpreted by pyproj's CRS.from_cf() when pyproj is installed
 lift_srs <- function(obj, coords, ds_parent) {
   wkt_from <- function(attrs) {
     for (key in c("crs_wkt", "spatial_ref")) {
@@ -235,14 +237,15 @@ lift_srs <- function(obj, coords, ds_parent) {
     if (!is.null(w)) return(w)
   }
   ## 2. follow the grid_mapping pointer into the parent dataset
+  gm_attrs <- NULL
   gm <- tryCatch(py_to_r(obj$attrs$get("grid_mapping")),
                  error = function(e) NULL)
   if (is.character(gm) && length(gm) == 1L && nzchar(gm)) {
     ## CF allows "name: coord ..." forms; take the leading token
     gm <- sub("[: ].*$", "", gm)
-    a <- var_attrs(ds_parent, gm)
-    if (!is.null(a)) {
-      w <- wkt_from(a)
+    gm_attrs <- var_attrs(ds_parent, gm)
+    if (!is.null(gm_attrs)) {
+      w <- wkt_from(gm_attrs)
       if (!is.null(w)) return(w)
     }
   }
@@ -253,6 +256,14 @@ lift_srs <- function(obj, coords, ds_parent) {
       w <- wkt_from(a)
       if (!is.null(w)) return(w)
     }
+  }
+  ## 4. the grid_mapping's CF parameters, via pyproj
+  if (!is.null(gm_attrs)) {
+    w <- tryCatch(py_to_r(reticulate::py_eval(paste0(
+      "lambda a: __import__('pyproj').CRS.from_cf(dict(a)).to_wkt() ",
+      "if 'grid_mapping_name' in a else None"), convert = FALSE)(gm_attrs)),
+      error = function(e) NULL)
+    if (is.character(w) && length(w) == 1L && nzchar(w)) return(w)
   }
   ""
 }

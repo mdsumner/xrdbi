@@ -98,6 +98,11 @@
 
 ## Fixes
 
+* `xr_raster()` and `xr_chunks()` find a CRS from a CF `grid_mapping`
+  variable's parameters (`grid_mapping_name` and the rest), through
+  pyproj when installed, as a last resort: authored WKT (`crs_wkt`,
+  `spatial_ref`) anywhere still comes first.
+
 * `xr_raster()` finds the CRS that gdalxarray records in an xproj
   `CRSIndex` (its `crs` coordinate has no attributes), or that a rasterix
   `RasterIndex` carries; `srs` was empty for gdalxarray rasters.

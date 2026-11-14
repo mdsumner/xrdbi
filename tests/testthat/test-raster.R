@@ -211,3 +211,41 @@ test_that("vector cubes and non-numeric axes refuse with a reason", {
     "ds.v.assign_coords(geometry=[1.0, 2.0, 3.0]).transpose('geometry', 'time')")),
                "'time' coordinate is not numeric \\(M dtype\\)")
 })
+
+test_that("srs from CF grid_mapping parameters, when nothing authored", {
+  skip_if_no_xarray()
+  skip_if_not(reticulate::py_module_available("pyproj"),
+              "python pyproj not available")
+  ## Antarctic polar stereographic (EPSG:3031) as CF parameters only
+  make <- function(wkt = NULL) {
+    DBI::dbConnect(xarray(), builder = function(xr) {
+      reticulate::py_run_string(paste(
+        "import xarray as _xr, numpy as _np",
+        "_ps = _xr.Dataset({'v': (('y', 'x'), _np.zeros((4, 5)), {'grid_mapping': 'crs'}),",
+        "  'crs': ((), 0, {'grid_mapping_name': 'polar_stereographic',",
+        "    'latitude_of_projection_origin': -90.0, 'standard_parallel': -71.0,",
+        "    'straight_vertical_longitude_from_pole': 0.0,",
+        "    'false_easting': 0.0, 'false_northing': 0.0,",
+        "    'semi_major_axis': 6378137.0, 'inverse_flattening': 298.257223563})},",
+        "  coords={'y': _np.arange(4) * 1e5, 'x': _np.arange(5) * 1e5})",
+        sep = "\n"), convert = FALSE)
+      ds <- reticulate::py_eval("_ps", convert = FALSE)
+      if (!is.null(wkt)) {
+        reticulate::py_get_item(ds, "crs")$attrs$update(list(crs_wkt = wkt))
+      }
+      ds
+    })
+  }
+  con <- make()
+  on.exit(DBI::dbDisconnect(con))
+  srs <- attr(xr_raster(con, "ds.v"), "gis")$srs
+  expect_match(srs, "Polar Stereographic")
+  expect_match(srs, "-71")
+  skip_if_not_installed("wk")
+  expect_identical(wk::wk_crs(xr_chunks(con, "ds.v")$geometry), srs)
+
+  ## authored WKT still wins over the parameters
+  con2 <- make(wkt = "AUTHORED")
+  on.exit(DBI::dbDisconnect(con2), add = TRUE)
+  expect_identical(attr(xr_raster(con2, "ds.v"), "gis")$srs, "AUTHORED")
+})
