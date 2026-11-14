@@ -257,7 +257,7 @@ system.time({
   con <- dbConnect(xarray(), dsn, engine = "gdalxarray")
 })
 #>    user  system elapsed 
-#>   0.665   0.158   2.347
+#>   0.651   0.154   2.263
 
 con
 #> <XarrayConnection>
@@ -456,10 +456,11 @@ repeated with `rep()`, so ten million rows arrive in about half a second
 and `dbFetch(n = )` builds only the rows asked for. Types arrive as R
 types: datetimes as POSIXct tagged UTC (or their own zone, if they have
 one), timedeltas as `difftime`, strings, bytes and non-standard calendar
-dates (cftime) as character, categoricals as factors, and missing values
-as `NA`. Dimension coordinates render as a single column of their
-values; scalar results as a one-cell frame. The array is a rendering
-format; so is the data frame.
+dates (cftime) as character, categoricals as factors, geometry (the
+geometry coordinate of an xvec vector data cube) as `wk::wkb` carrying
+its CRS, and missing values as `NA`. Dimension coordinates render as a
+single column of their values; scalar results as a one-cell frame. The
+array is a rendering format; so is the data frame.
 
 Note `isel` in `xr_query()` uses zero-based Python indices: the function
 interpolates values into Python source and does not translate. The

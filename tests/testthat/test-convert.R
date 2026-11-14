@@ -157,3 +157,40 @@ test_that("xarray string, cftime and timedelta coords fetch as R types", {
   DBI::dbClearResult(res)
   expect_equal(rbind(a, b), df)
 })
+
+test_that("shapely geometry arrives as wk::wkb, or WKT text without wk", {
+  skip_if_no_xarray()
+  skip_if_not_installed("wk")
+  skip_if_not(reticulate::py_module_available("shapely"),
+              "python shapely not available")
+  ## a geometry coordinate (as an xvec cube has), one geometry missing
+  con <- DBI::dbConnect(xarray(), builder = function(xr) {
+    reticulate::py_run_string(paste(
+      "import xarray as _xr, numpy as _np, shapely as _sh",
+      "_g = _np.array([_sh.Point(1, 2), _sh.box(0, 0, 1, 1), None], dtype=object)",
+      "_vg = _xr.Dataset({'v': (('time', 'geometry'), _np.arange(6.).reshape(2, 3))},",
+      "                  coords={'time': [10, 20], 'geometry': _g})",
+      sep = "\n"), convert = FALSE)
+    reticulate::py_eval("_vg", convert = FALSE)
+  })
+  on.exit(DBI::dbDisconnect(con))
+  d <- DBI::dbGetQuery(con, "ds.v")
+  expect_s3_class(d$geometry, "wk_wkb")
+  wkt <- as.character(wk::as_wkt(d$geometry))
+  expect_identical(wkt[1:3], c("POINT (1 2)",
+                               "POLYGON ((1 0, 1 1, 0 1, 0 0, 1 0))", NA))
+  ## repeated per time, converted once per distinct geometry
+  expect_identical(wkt[4:6], wkt[1:3])
+  ## the pandas path agrees (a value filter forces it)
+  q <- DBI::dbGetQuery(con, "ds.v.pipe(_xrdbi_render).query('v > 2')")
+  expect_identical(as.character(wk::as_wkt(q$geometry)), wkt[4:6])
+
+  skip_if_not_installed("sf")
+  expect_s3_class(sf::st_as_sfc(d$geometry[1:2]), "sfc")
+
+  ## without wk, geometry falls back to WKT text
+  reticulate::py_run_string("_XRDBI_GEOMETRY = 'wkt'")
+  on.exit(reticulate::py_run_string("_XRDBI_GEOMETRY = 'wkb'"), add = TRUE)
+  expect_identical(DBI::dbGetQuery(con, "ds.v")$geometry[1:2],
+                   c("POINT (1 2)", "POLYGON ((1 0, 1 1, 0 1, 0 0, 1 0))"))
+})

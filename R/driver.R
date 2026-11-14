@@ -122,6 +122,10 @@ setMethod("dbConnect", "XarrayDriver",
     ptr$render <- reticulate::py_eval("_xrdbi_render", convert = FALSE)
     reticulate::py_run_string(xrdbi_columns_py)
     ptr$columns <- reticulate::py_eval("_xrdbi_columns", convert = FALSE)
+    ptr$geom_crs <- reticulate::py_eval("_xrdbi_geom_crs", convert = FALSE)
+    ## geometry columns arrive as wk::wkb, or WKT text without wk
+    reticulate::py_run_string(sprintf("_XRDBI_GEOMETRY = '%s'",
+      if (requireNamespace("wk", quietly = TRUE)) "wkb" else "wkt"))
     reticulate::py_run_string(xrdbi_geometry_py)
     ptr$geometry <- reticulate::py_eval("_xrdbi_geometry", convert = FALSE)
     reticulate::py_run_string(xrdbi_coord_block_py)

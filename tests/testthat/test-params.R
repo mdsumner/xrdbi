@@ -153,5 +153,8 @@ test_that("xvec extracts points given from R", {
   expect_equal(nrow(got), 3L * 2L)
   all <- DBI::dbGetQuery(con, "ds.sst")
   want <- all[all$lat == -80 & all$lon == 0, "sst"]
-  expect_equal(got$sst[got$geometry == "POINT (1 -79)"], want)
+  expect_equal(got$sst[as.character(wk::as_wkt(got$geometry)) == "POINT (1 -79)"], want)
+  ## geometry arrives as wk::wkb carrying the cube's CRS
+  expect_s3_class(got$geometry, "wk_wkb")
+  expect_identical(wk::wk_crs(got$geometry), "EPSG:4326")
 })

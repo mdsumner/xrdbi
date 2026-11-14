@@ -152,6 +152,7 @@ render_result <- function(res, max_cells, force) {
   is_xr <- py_to_r(bt$isinstance(obj, xr$DataArray)) ||
     py_to_r(bt$isinstance(obj, xr$Dataset))
   if (is_xr) guard_cells(obj, max_cells, force)
+  ptr$geom_crs <- if (is_xr) geom_crs(ptr$conn, obj) else list()
 
   ## a plain DataArray: R builds the coordinate columns (plan_result)
   if (is_xr) ptr$plan <- plan_result(ptr$conn, obj)
@@ -186,11 +187,14 @@ setMethod("dbFetch", "XarrayResult",
     stop_ <- if (n < 0) ptr$nrow else min(ptr$nrow, start + as.integer(n))
     ptr$cursor <- stop_
 
-    if (!is.null(ptr$plan)) return(plan_fetch(ptr$conn, ptr$plan, start, stop_))
+    if (!is.null(ptr$plan)) {
+      return(set_geom_crs(plan_fetch(ptr$conn, ptr$plan, start, stop_),
+                          ptr$geom_crs))
+    }
     bt <- import_builtins(convert = FALSE)
     chunk <- py_get_item(ptr$df$iloc,
                          bt$slice(as.integer(start), as.integer(stop_)))
-    frame_to_r(ptr$conn, chunk)
+    set_geom_crs(frame_to_r(ptr$conn, chunk), ptr$geom_crs)
   })
 
 #' @rdname XarrayResult-class

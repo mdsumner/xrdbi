@@ -42,8 +42,9 @@ fmt_count <- function(n) {
 ## the rendering: tidy long form, one row per cell
 render_dataframe <- function(conn, obj) {
   plan <- plan_result(conn, obj)
-  if (!is.null(plan)) return(plan_fetch(conn, plan, 0, plan$n))
-  frame_to_r(conn, conn@ptr$render(obj))
+  out <- if (!is.null(plan)) plan_fetch(conn, plan, 0, plan$n) else
+    frame_to_r(conn, conn@ptr$render(obj))
+  set_geom_crs(out, geom_crs(conn, obj))
 }
 
 ## The long form repeats every coordinate once per cell. For a
@@ -131,12 +132,37 @@ frame_to_r <- function(conn, df) {
   list2DF(out, nrow = n)
 }
 
+## the CRS of each geometry coordinate of an xarray object (named list)
+geom_crs <- function(conn, obj) {
+  tryCatch(py_to_r(conn@ptr$geom_crs(obj)), error = function(e) list())
+}
+
+## put those CRSs on the matching wk columns of a fetched frame
+set_geom_crs <- function(df, crs) {
+  for (nm in intersect(names(crs), names(df))) {
+    if (inherits(df[[nm]], "wk_wkb")) df[[nm]] <- wk::wk_set_crs(df[[nm]], crs[[nm]])
+  }
+  df
+}
+
 column_to_r <- function(col) {
   v <- col$values
   dim(v) <- NULL
   v <- switch(col$kind,
     time = .POSIXct(v, tz = if (col$tz %in% OlsonNames()) col$tz else "UTC"),
     difftime = as.difftime(v, units = "secs"),
+    wkb = {
+      ## 0-based codes into the geometries, -1 for missing
+      idx <- v + 1L
+      idx[idx < 1L] <- NA_integer_
+      buf <- as.raw(as.vector(col$levels))
+      len <- as.vector(col$lengths)
+      ends <- cumsum(len)
+      geoms <- lapply(seq_along(len), function(i) {
+        if (len[i] == 0) NULL else buf[(ends[i] - len[i] + 1):ends[i]]
+      })
+      wk::wkb(geoms)[idx]
+    },
     text = ,
     factor = {
       ## 0-based codes, -1 for missing
@@ -278,10 +304,37 @@ def _xrdbi_columns(df):
                 # unhashable objects: one level per row
                 codes = np.where(s.isna().to_numpy(), -1, np.arange(len(s)))
                 uniques = s.to_numpy()
-            col['kind'] = 'text'
             col['values'] = codes.astype('int32')
-            col['levels'] = np.array([text(u) for u in uniques], dtype=object)
+            first = next((u for u in uniques if u is not None), None)
+            if (_XRDBI_GEOMETRY == 'wkb' and first is not None
+                    and type(first).__module__.startswith('shapely')):
+                # geometry (e.g. an xvec cube's geometry coordinate): WKB,
+                # one uint8 buffer plus each geometry's length, which R
+                # splits into a wk::wkb vector
+                import shapely
+                blobs = [b'' if u is None else shapely.to_wkb(u) for u in uniques]
+                col['kind'] = 'wkb'
+                col['levels'] = np.frombuffer(b''.join(blobs), dtype='uint8')
+                col['lengths'] = np.array([len(b) for b in blobs], dtype='int64')
+            else:
+                col['kind'] = 'text'
+                col['levels'] = np.array([text(u) for u in uniques], dtype=object)
         out.append(col)
+    return out
+
+# geometry renders as WKB (R has wk) or WKT text (set at connect)
+_XRDBI_GEOMETRY = 'wkb'
+
+def _xrdbi_geom_crs(obj):
+    # the CRS of each geometry coordinate, from its index (xvec's
+    # GeometryIndex carries one): an authority code when there is one
+    out = {}
+    for name, ix in getattr(obj, 'xindexes', {}).items():
+        crs = getattr(ix, 'crs', None)
+        if crs is None or name not in obj.coords or obj[name].dtype != object:
+            continue
+        auth = crs.to_authority()
+        out[str(name)] = ':'.join(auth) if auth else crs.to_wkt()
     return out
 )---"
 

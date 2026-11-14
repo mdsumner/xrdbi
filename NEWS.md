@@ -26,6 +26,14 @@
   Selections on index-only dimensions (`isel(eta_rho=...)`) are placed
   through the 2-D coordinates, whose value pairs are copied exactly.
 
+## Vector data cubes
+
+* Geometry (the geometry coordinate of an xvec vector data cube, or any
+  column of shapely objects) arrives as `wk::wkb` instead of WKT text,
+  carrying the CRS of xvec's `GeometryIndex`, so it goes straight into
+  sf (`sf::st_as_sfc()`). Each distinct geometry crosses once, as one
+  byte buffer. Without the wk package it is WKT text, as before.
+
 ## Query parameters
 
 * `dbSendQuery()`, `dbGetQuery()` and `xr_raster()` take `params`, a named

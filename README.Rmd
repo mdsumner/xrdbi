@@ -337,8 +337,9 @@ repeated with `rep()`, so ten million rows arrive in about half a second
 and `dbFetch(n = )` builds only the rows asked for. Types arrive as R
 types: datetimes as POSIXct tagged UTC (or their own zone, if they have
 one), timedeltas as `difftime`, strings, bytes and non-standard calendar
-dates (cftime) as character, categoricals as factors, and missing values
-as `NA`. Dimension coordinates render as a single column of their
+dates (cftime) as character, categoricals as factors, geometry (the
+geometry coordinate of an xvec vector data cube) as `wk::wkb` carrying
+its CRS, and missing values as `NA`. Dimension coordinates render as a single column of their
 values; scalar results as a one-cell frame. The array is a rendering
 format; so is the data frame.
 
