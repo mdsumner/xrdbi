@@ -136,6 +136,15 @@ example needs gcsfs, and vector cubes need xvec:
 uv pip install --python "$RETICULATE_PYTHON" gcsfs xvec
 ```
 
+The image runs development dask with its array query planning turned
+on, under which xarray's `open_mfdataset()` fails with a
+`NotImplementedError`. Turn it off for the container, as this site's
+build does:
+
+```sh
+docker run --rm -it -e DASK_ARRAY__QUERY_PLANNING=False ghcr.io/hypertidy/gdal-r-python:latest R
+```
+
 ## Check what you have
 
 `reticulate::py_config()` says which Python was chosen and why, and

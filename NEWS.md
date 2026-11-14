@@ -33,7 +33,13 @@
   "Python environments" article: letting reticulate manage Python, your
   own Python, conda and pixi (and what reticulate needs there), the
   gdal-r-python image, and how to check what you have. The deploy step
-  installs rsync, which the image lacks and the deploy action needs.
+  installs rsync, which the image lacks and the deploy action needs. The
+  site's R dependencies install with pak's system requirements off and
+  without upgrading the image's packages: apt's GDAL and GEOS beside the
+  image's own gave shapely the wrong `libgeos_c.so.1`, and a smoke step
+  now loads sf and shapely together before the build. The build turns
+  off dask's array query planning, which the image turns on and under
+  which `open_mfdataset()` fails; "Python environments" says how.
 
 * Eight more articles, built live on the site: "Querying with dplyr" (how
   each verb compiles and what gets read), "Parameters", "From arrays to

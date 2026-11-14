@@ -24,6 +24,10 @@ jobs:
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       NOT_CRAN: "true"
+      # The image turns on dask's array query planning, under which
+      # xarray's open_mfdataset fails (NotImplementedError from concat's
+      # result_type); the articles show released dask's default.
+      DASK_ARRAY__QUERY_PLANNING: "False"
     permissions:
       contents: write
     steps:
@@ -37,7 +41,17 @@ jobs:
         run: uv pip install --python "$RETICULATE_PYTHON" gcsfs xvec
 
       - name: R dependencies
-        run: Rscript -e 'pak::local_install_deps(dependencies = TRUE, ask = FALSE)'
+        # Keep the image's packages, and never let pak apt-install system
+        # requirements: Ubuntu's libgdal-dev and libgeos-dev would put a second
+        # libgeos_c.so.1 beside the image's, and whichever loads first is the
+        # one shapely gets (GEOSSplit_r was missing when Ubuntu's won).
+        env:
+          PKG_SYSREQS: "false"
+        run: Rscript -e 'pak::local_install_deps(dependencies = TRUE, upgrade = FALSE, ask = FALSE)'
+
+      - name: One GEOS for R and Python
+        # sf and shapely in one process, as the articles load them
+        run: Rscript -e 'library(sf); invisible(reticulate::import("shapely"))'
 
       - name: Install xrdbi
         run: R CMD INSTALL .
