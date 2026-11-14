@@ -192,6 +192,7 @@ xrdbi_render_py <- paste(
   "def _xrdbi_render(obj):",
   "    import xarray as xr, pandas as pd, numpy as np",
   "    if isinstance(obj, (xr.Dataset, xr.DataArray)):",
+  "        obj = _xrdbi_plain(obj)  # custom indexes defeat to_dataframe",
   "        if 0 in dict(obj.sizes).values():",
   "            # empty selection: frame from metadata, read no bytes",
   "            # (some backends, e.g. GDAL mdim, reject zero-count reads)",
@@ -354,8 +355,33 @@ def _xrdbi_geom_crs(obj):
 ## 'axis'), 'scalar' (one value in 'col'), 'flat' (index into flats: a
 ## C-order 1-D array, sliced per fetch by _xrdbi_slice)
 xrdbi_plan_py <- r"---(
+def _xrdbi_plain(obj):
+    # Rows need pandas indexes on the dimension coordinates, and
+    # to_dataframe() fails without them. Custom indexes cannot become one
+    # (rasterix's RasterIndex on a gdalxarray raster's x/y, xproj's
+    # CRSIndex), and a selection can leave a dimension coordinate with no
+    # index at all (isel(y=5) drops the RasterIndex, leaving x bare). So
+    # for rendering, custom indexes are dropped, keeping their coordinates,
+    # and every 1-D dimension coordinate gets a pandas index of its values.
+    # xr_raster() and xr_chunks() read the original object, so the CRS and
+    # the grid placement are not lost.
+    custom = []
+    for k, ix in obj.xindexes.items():
+        try:
+            ix.to_pandas_index()
+        except Exception:
+            custom.append(k)
+    if custom:
+        obj = obj.drop_indexes(custom)
+    for d in list(obj.dims):
+        if d in obj.coords and obj[d].dims == (d,) and d not in obj.xindexes:
+            obj = obj.set_xindex(d)
+    return obj
+
 def _xrdbi_plan(obj):
     import xarray as xr, numpy as np, pandas as pd
+    if isinstance(obj, (xr.DataArray, xr.Dataset)):
+        obj = _xrdbi_plain(obj)
     if isinstance(obj, xr.DataArray):
         name = obj.name if obj.name is not None else 'value'
         if name in obj.dims or name in obj.coords:
@@ -420,8 +446,8 @@ xrdbi_hint_py <- paste(
   "    for dim, size in obj.sizes.items():",
   "        if size != 0:",
   "            continue",
-  "        if dim in ds.indexes:",
-  "            idx = ds.indexes[dim]",
+  "        if dim in ds.coords and ds[dim].dims == (dim,):",
+  "            idx = ds[dim].to_index()  # any index, custom ones too",
   "            lo, hi = idx[0], idx[-1]",
   "            if idx.is_monotonic_decreasing:",
   "                msgs.append(",

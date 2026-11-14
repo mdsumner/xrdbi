@@ -80,3 +80,14 @@ test_that("order of application is vars, sel, isel, tail", {
              tail = ".mean()"),
     "ds['sst'].sel(lat=-80).isel(time=0).mean()")
 })
+
+test_that("numeric literals are the shortest decimal that round-trips", {
+  x <- c(18, -44.83, 0.1, -22.941163999999997, 1 / 3, 2^60)
+  ## values as typed stay as typed
+  expect_identical(num_literal(x[1:3]), c("18", "-44.83", "0.1"))
+  ## REGRESSION: 15 digits wrote -22.941163999999997 as -22.941164, so a
+  ## strict bound at a fetched coordinate kept its own cell
+  expect_identical(num_literal(x[4]), "-22.941163999999997")
+  expect_identical(as.numeric(num_literal(x)), x)
+  expect_false(any(grepl("e", num_literal(c(1e-20, 1e20)))))
+})

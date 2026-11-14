@@ -96,6 +96,18 @@ py_literal <- function(x, integer = FALSE) {
   if (is.character(x)) return(py_repr_string(x))
   if (is.logical(x)) return(if (isTRUE(x)) "True" else "False")
   if (integer) return(format(as.integer(x)))
-  ## no scientific notation surprises in the compiled python
-  format(x, digits = 15, scientific = FALSE, trim = TRUE)
+  num_literal(x)
+}
+
+## a double as Python source: the shortest decimal that reads back as the
+## same double. 15 significant digits round-trip most values as typed
+## (18, -44.83); a value computed or fetched from the data, such as a
+## coordinate (-22.941163999999997), may need 17, and at 15 it would shift
+## a strict bound past its own cell. No scientific notation surprises.
+num_literal <- function(x) {
+  vapply(x, function(v) {
+    s <- format(v, digits = 15, scientific = FALSE, trim = TRUE)
+    if (!is.finite(v) || as.numeric(s) == v) return(s)
+    format(v, digits = 17, scientific = FALSE, trim = TRUE)
+  }, "", USE.NAMES = FALSE)
 }

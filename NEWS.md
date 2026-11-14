@@ -150,6 +150,25 @@
 
 ## Fixes
 
+* Rows render from GDAL rasters opened with gdalxarray's classic mode
+  (`multidim = FALSE`). Their x and y carry rasterix's `RasterIndex`,
+  which `to_dataframe()` cannot cast to pandas, so every row query
+  failed; a scalar `y` selection, which leaves `x` with no index at all,
+  failed differently. Rendering now gives such coordinates plain pandas
+  indexes first. `xr_raster()` and `xr_chunks()` still read the original
+  indexes.
+
+* `tbl()` filters on a GDAL raster's `y`, which runs north to south,
+  select the right side. The direction check read `ds.indexes`, failed on
+  the `RasterIndex` and assumed ascending, so `filter(y > ...)` returned
+  nothing. The direction check, the strict-bound trim and the empty-result
+  hint now use the coordinate's `to_index()`, which works for any index.
+
+* Numbers in compiled statements are written to round-trip exactly. At 15
+  significant digits a value fetched from the data, such as a coordinate
+  (-22.941163999999997), became -22.941164, and a strict bound at it kept
+  its own cell. Values as typed (18, -44.83) are written as before.
+
 * A vector cube's geometry keeps its CRS when the geometry coordinate has
   geopandas' `geometry` extension dtype, as the result of xvec's
   `zonal_stats()` does. Only object-dtype coordinates were looked at, so

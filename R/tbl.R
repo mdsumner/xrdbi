@@ -513,12 +513,14 @@ split_preds <- function(x, dims, descending) {
       sel_args <- c(sel_args,
                     paste0(nm, "=slice(", bounds[1L], ", ", bounds[2L], ")"))
       ## strict bounds over-fetch the boundary cell; trim it with a
-      ## boolean isel on the dimension's index (pandas comparison, the
-      ## same semantics as a query, so date strings keep their meaning)
-      ## and the result stays a DataArray
+      ## boolean isel on the dimension's coordinate as a pandas index
+      ## (pandas comparison, the same semantics as a query, so date
+      ## strings keep their meaning) and the result stays a DataArray.
+      ## to_index() rather than .indexes[]: a custom index (rasterix's
+      ## RasterIndex on a GDAL raster's x/y) cannot be cast by .indexes
       strict <- Filter(function(p) p$op %in% c(">", "<"), rng)
       if (length(strict)) {
-        idx <- paste0("a.indexes[", py_repr_string(nm), "]")
+        idx <- paste0("a[", py_repr_string(nm), "].to_index()")
         refine <- c(refine, paste0(nm, "=", paste(vapply(strict, function(p) {
           paste0("(", idx, " ", p$op, " ", py_literal(p$value), ")")
         }, ""), collapse = " & ")))
@@ -552,7 +554,7 @@ q_literal <- function(x) {
     return(paste0('"', gsub('"', '\\\\"', x), '"'))
   }
   if (is.logical(x)) return(if (isTRUE(x)) "True" else "False")
-  format(x, digits = 15, scientific = FALSE, trim = TRUE)
+  num_literal(x)
 }
 
 ## ---- connection introspection (metadata only, no reads) --------------
@@ -568,8 +570,8 @@ dim_is_descending <- function(d, con) {
   bt <- import_builtins(convert = FALSE)
   scope <- py_dict("ds", list(conn_ds(con)), convert = FALSE)
   out <- tryCatch(py_to_r(bt$eval(
-    paste0("bool(ds.indexes[", py_repr_string(d),
-           "].is_monotonic_decreasing)"), scope)),
+    paste0("bool(ds[", py_repr_string(d),
+           "].to_index().is_monotonic_decreasing)"), scope)),
     error = function(e) FALSE)
   isTRUE(out)
 }

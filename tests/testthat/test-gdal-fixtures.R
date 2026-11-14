@@ -112,3 +112,38 @@ test_that("rotated_pole.nc via gdalxarray (classic): the grid mapping becomes th
   ## match loosely so a GDAL change to the naming does not break this
   expect_match(g$srs, "rotat", ignore.case = TRUE)
 })
+
+test_that("rgbsmall.tif via gdalxarray (classic): rows render through RasterIndex", {
+  skip_if_no_xarray()
+  skip_if_not(reticulate::py_module_available("gdalxarray"),
+              "python gdalxarray not available")
+  con <- open_fixture_con(NC("rgbsmall.tif"), engine = "gdalxarray",
+                          multidim = FALSE)
+  on.exit(DBI::dbDisconnect(con))
+
+  ## REGRESSION: x/y carry rasterix's RasterIndex, which to_dataframe()
+  ## cannot cast to pandas, so no rows rendered at all
+  st <- "ds.band_data.isel(band=0, y=slice(0, 2), x=slice(0, 3))"
+  d <- DBI::dbGetQuery(con, st)
+  expect_equal(nrow(d), 6L)
+  expect_identical(d$band_data, as.vector(xr_raster(con, st)))
+  ## REGRESSION: a scalar y leaves x with no index at all, and
+  ## reset_index() then collided on 'x'
+  expect_equal(nrow(DBI::dbGetQuery(con, "ds.band_data.isel(y=5, x=slice(0, 3))")),
+               9L)
+  res <- DBI::dbSendQuery(con, "ds.band_data")
+  expect_equal(nrow(DBI::dbFetch(res, n = 4)), 4L)
+  DBI::dbClearResult(res)
+
+  ## y runs north to south. REGRESSION: the direction check read
+  ## ds.indexes, failed on the RasterIndex and assumed ascending, so a
+  ## filter on y selected the wrong side and returned nothing
+  ys <- DBI::dbGetQuery(con, "ds.y")$y
+  cut <- ys[3]
+  t <- dplyr::filter(dplyr::tbl(con, "band_data"), band == 1, y > cut,
+                     x < -44.83)
+  got <- dplyr::collect(t)
+  expect_equal(sort(unique(got$y), decreasing = TRUE), ys[1:2])
+  expect_true(all(got$x < -44.83))
+  expect_gt(nrow(got), 0L)
+})

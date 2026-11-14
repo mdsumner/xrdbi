@@ -26,8 +26,8 @@ test_that("descending dims get an oriented slice", {
     compile1(x, dims = c("latitude", "longitude"),
              descending = "latitude"),
     paste0("ds['u'].sel(latitude=slice(19, 18))",
-           ".pipe(lambda a: a.isel(latitude=(a.indexes['latitude'] > 18)",
-           " & (a.indexes['latitude'] < 19)))"))
+           ".pipe(lambda a: a.isel(latitude=(a['latitude'].to_index() > 18)",
+           " & (a['latitude'].to_index() < 19)))"))
 })
 
 test_that("strict bounds push the hull and trim it on the index", {
@@ -35,15 +35,15 @@ test_that("strict bounds push the hull and trim it on the index", {
   expect_equal(
     compile1(x, dims = c("time", "lat", "lon")),
     paste0("ds['sst'].sel(lat=slice(-80, -70))",
-           ".pipe(lambda a: a.isel(lat=(a.indexes['lat'] > -80)))"))
+           ".pipe(lambda a: a.isel(lat=(a['lat'].to_index() > -80)))"))
 
   ## strict on two dims, the hull stage without the trim
   x <- dplyr::filter(shell(), lat > -80, lon < 30)
   expect_equal(
     compile1(x, dims = c("time", "lat", "lon")),
     paste0("ds['sst'].sel(lat=slice(-80, None), lon=slice(None, 30))",
-           ".pipe(lambda a: a.isel(lat=(a.indexes['lat'] > -80), ",
-           "lon=(a.indexes['lon'] < 30)))"))
+           ".pipe(lambda a: a.isel(lat=(a['lat'].to_index() > -80), ",
+           "lon=(a['lon'].to_index() < 30)))"))
   expect_equal(
     xrdbi:::compile_tbl(x, dims = c("time", "lat", "lon"),
                         descending = character(), stage = "hull"),
