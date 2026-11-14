@@ -32,7 +32,8 @@
   (`tools/precompute.R`), so it builds on CRAN without Python. New
   "Python environments" article: letting reticulate manage Python, your
   own Python, conda and pixi (and what reticulate needs there), the
-  gdal-r-python image, and how to check what you have.
+  gdal-r-python image, and how to check what you have. The deploy step
+  installs rsync, which the image lacks and the deploy action needs.
 
 ## Chunk maps
 
