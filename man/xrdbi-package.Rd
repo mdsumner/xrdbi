@@ -133,6 +133,7 @@ dbDisconnect(con)
 Useful links:
 \itemize{
   \item \url{https://github.com/mdsumner/xrdbi}
+  \item \url{https://mdsumner.github.io/xrdbi/}
   \item Report bugs at \url{https://github.com/mdsumner/xrdbi/issues}
 }
 

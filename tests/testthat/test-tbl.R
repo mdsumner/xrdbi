@@ -220,6 +220,21 @@ test_that("the collect guard counts what is read, and force reaches dbFetch", {
   expect_equal(nrow(dplyr::collect(utils::head(t, 5))), 5L)
 })
 
+test_that("collect() and as.data.frame() take max_cells", {
+  skip_if_no_xarray()
+  con <- make_con()
+  on.exit(DBI::dbDisconnect(con))
+  t <- dplyr::tbl(con, "sst")
+  ## REGRESSION: max_cells was swallowed by ... and ignored
+  expect_error(dplyr::collect(t, max_cells = 10), "60 cells, over the guard \\(10\\)")
+  expect_error(as.data.frame(t, max_cells = 10), "60 cells")
+  expect_equal(nrow(dplyr::collect(t, max_cells = 10, force = TRUE)), 60L)
+  expect_s3_class(dplyr::collect(t, max_cells = 100), "tbl_df")
+  df <- as.data.frame(t)
+  expect_identical(class(df), "data.frame")
+  expect_equal(nrow(df), 60L)
+})
+
 test_that("descending coordinates just work through the tbl layer", {
   skip_if_no_xarray()
   con <- make_desc_con()

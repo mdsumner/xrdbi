@@ -13,8 +13,10 @@
 #' `filter()` takes `==`, `%in%`, `<`, `<=`, `>`, `>=`, `between()` and
 #' `&` (or several arguments), each comparing a field with a value;
 #' there is no `|`, `!` or `!=`. `collect()` is guarded like
-#' [DBI::dbFetch()]: above `getOption("xrdbi.max_cells", 1e7)` cells
-#' read it errors unless `collect(force = TRUE)`. Printing shows the
+#' [DBI::dbFetch()]: above `max_cells` cells read (default
+#' `getOption("xrdbi.max_cells", 1e7)`) it errors unless
+#' `collect(force = TRUE)`; `as.data.frame()` takes the same arguments
+#' and gives a plain data frame. Printing shows the
 #' first `getOption("xrdbi.print_n", 6)` rows, reading at most one chunk;
 #' `options(xrdbi.print_preview = FALSE)` turns the preview off.
 #'
@@ -135,7 +137,8 @@ head.tbl_xarray <- function(x, n = 6L, ...) {
 }
 
 
-collect_impl <- function(x, ...) {
+collect_impl <- function(x, max_cells = getOption("xrdbi.max_cells", 1e7),
+                         force = FALSE) {
   con <- x$con
   if (is.null(con)) stop("no connection on this tbl", call. = FALSE)
   cc <- tbl_compile(x, tbl_context(x))
@@ -145,13 +148,12 @@ collect_impl <- function(x, ...) {
   sized <- cc$xarray
   n <- py_to_r(import_builtins(convert = FALSE)$eval(
     paste0("float((", sized, ").size)"), tbl_scope(con)))  # see guard_cells
-  max_cells <- getOption("xrdbi.max_cells", 1e7)
-  if (n > max_cells && !isTRUE(list(...)$force)) {
+  if (is.finite(max_cells) && n > max_cells && !isTRUE(force)) {
     stop(sprintf(paste0(
-      "collect would materialize %s cells; constrain more dimensions ",
-      "(e.g. a time range), raise options(xrdbi.max_cells=), or ",
-      "collect(force = TRUE)"),
-      fmt_count(n)), call. = FALSE)
+      "collect would materialize %s cells, over the guard (%s); constrain ",
+      "more dimensions (e.g. a time range), raise ",
+      "options(xrdbi.max_cells=), or collect(force = TRUE)"),
+      fmt_count(n), fmt_count(max_cells)), call. = FALSE)
   }
   run_tbl(con, cc, x)
 }
@@ -170,16 +172,21 @@ run_tbl <- function(con, cc, x) {
 }
 
 #' @export
-as.data.frame.tbl_xarray <- function(x, ...) collect_impl(x, ...)
-
-#' @export
 #' @importFrom dplyr collect
-collect.tbl_xarray <- function(x, ...) {
-  dplyr::as_tibble(collect_impl(x, ...))
+collect.tbl_xarray <- function(x, ...,
+                               max_cells = getOption("xrdbi.max_cells", 1e7),
+                               force = FALSE) {
+  dplyr::as_tibble(collect_impl(x, max_cells = max_cells, force = force))
 }
 
+## as.data.frame() gives a plain data frame (collect() a tibble)
 #' @export
-as.data.frame.tbl_xarray <- function(x, ...) collect.tbl_xarray(x, ...)
+as.data.frame.tbl_xarray <- function(x, row.names = NULL, optional = FALSE,
+                                     ...,
+                                     max_cells = getOption("xrdbi.max_cells", 1e7),
+                                     force = FALSE) {
+  collect_impl(x, max_cells = max_cells, force = force)
+}
 
 #' @export
 show_query.tbl_xarray <- function(x, ...) {

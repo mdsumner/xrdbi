@@ -32,8 +32,10 @@ Supported verbs: \code{filter()}, \code{select()} (plain column names),
 \code{filter()} takes \code{==}, \code{\%in\%}, \code{<}, \code{<=}, \code{>}, \code{>=}, \code{between()} and
 \code{&} (or several arguments), each comparing a field with a value;
 there is no \code{|}, \code{!} or \code{!=}. \code{collect()} is guarded like
-\code{\link[DBI:dbFetch]{DBI::dbFetch()}}: above \code{getOption("xrdbi.max_cells", 1e7)} cells
-read it errors unless \code{collect(force = TRUE)}. Printing shows the
+\code{\link[DBI:dbFetch]{DBI::dbFetch()}}: above \code{max_cells} cells read (default
+\code{getOption("xrdbi.max_cells", 1e7)}) it errors unless
+\code{collect(force = TRUE)}; \code{as.data.frame()} takes the same arguments
+and gives a plain data frame. Printing shows the
 first \code{getOption("xrdbi.print_n", 6)} rows, reading at most one chunk;
 \code{options(xrdbi.print_preview = FALSE)} turns the preview off.
 

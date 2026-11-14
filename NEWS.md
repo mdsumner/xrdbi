@@ -149,6 +149,12 @@
 
 ## Fixes
 
+* `collect()` on a `tbl()` takes `max_cells`, like the other guarded
+  functions. It went into `...` and was ignored, so `collect(x, max_cells
+  = 10)` read everything. `as.data.frame()` takes the same arguments and
+  now gives a plain data frame (it was defined twice, the second
+  definition returning a tibble).
+
 * A POSIXct in a `tbl()` filter or `xr_query()` is compiled as its instant
   in UTC, as xarray stores times. It was written as wall-clock time in the
   object's own zone, so a bound in e.g. Australia/Hobart selected 11 hours
