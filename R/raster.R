@@ -99,6 +99,29 @@ xr_raster <- function(x, statement = NULL, as_list = FALSE,
            call. = FALSE)
     }
   }
+  ## a raster needs numeric axes: a vector data cube's geometry dimension
+  ## (xvec) or a time axis has none to place cells by
+  holds_geometry <- function(d) {
+    d %in% coords && py_to_r(py_get_item(obj, d)$dtype$kind) == "O" &&
+      isTRUE(tryCatch(py_to_r(reticulate::py_eval(paste0(
+        "lambda c: next((type(v).__module__.startswith('shapely') ",
+        "for v in c.values.flat if v is not None), False)"),
+        convert = FALSE)(py_get_item(obj, d))), error = function(e) FALSE))
+  }
+  for (d in dims) {
+    if (holds_geometry(d)) {
+      stop("'", d, "' holds geometries: a vector data cube has no raster ",
+           "rendering; use dbGetQuery() for its rows (geometry as wk::wkb)",
+           call. = FALSE)
+    }
+  }
+  for (d in c(ydim, xdim)) {
+    kind <- py_to_r(py_get_item(obj, d)$dtype$kind)
+    if (!kind %in% c("i", "u", "f")) {
+      stop("'", d, "' coordinate is not numeric (", kind, " dtype); a raster ",
+           "needs numeric y and x as its last two dimensions", call. = FALSE)
+    }
+  }
 
   cvals <- function(d) as.numeric(py_to_r(np$asarray(py_get_item(obj, d))))
   ## relative precision of a coordinate's storage type: a float32

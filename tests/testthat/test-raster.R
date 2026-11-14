@@ -188,3 +188,26 @@ test_that("srs lifts via CF grid_mapping pointer and dataset fallback", {
 
 
 })
+
+test_that("vector cubes and non-numeric axes refuse with a reason", {
+  skip_if_no_xarray()
+  skip_if_not(reticulate::py_module_available("shapely"),
+              "python shapely not available")
+  con <- DBI::dbConnect(xarray(), builder = function(xr) {
+    reticulate::py_run_string(paste(
+      "import xarray as _xr, numpy as _np, pandas as _pd, shapely as _sh",
+      "_vc = _xr.Dataset({'v': (('time', 'geometry'), _np.arange(6.).reshape(2, 3))},",
+      "  coords={'time': _pd.date_range('2026-01-01', periods=2),",
+      "          'geometry': _np.array([_sh.Point(1, 2), _sh.Point(3, 4), _sh.Point(5, 6)], dtype=object)})",
+      sep = "\n"), convert = FALSE)
+    reticulate::py_eval("_vc", convert = FALSE)
+  })
+  on.exit(DBI::dbDisconnect(con))
+  ## REGRESSION: this failed inside R with "'list' object cannot be
+  ## coerced to type 'double'"
+  expect_error(xr_raster(con, "ds.v"), "'geometry' holds geometries: a vector data cube")
+  ## numeric in place of geometry, time last: time cannot be an x axis
+  expect_error(xr_raster(con, paste0(
+    "ds.v.assign_coords(geometry=[1.0, 2.0, 3.0]).transpose('geometry', 'time')")),
+               "'time' coordinate is not numeric \\(M dtype\\)")
+})

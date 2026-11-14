@@ -34,6 +34,11 @@
   sf (`sf::st_as_sfc()`). Each distinct geometry crosses once, as one
   byte buffer. Without the wk package it is WKT text, as before.
 
+* `xr_raster()` refuses a vector data cube with a reason (its geometry
+  dimension has no raster rendering; use `dbGetQuery()`), and any
+  non-numeric y or x axis likewise; both failed with "'list' object
+  cannot be coerced to type 'double'".
+
 ## Query parameters
 
 * `dbSendQuery()`, `dbGetQuery()` and `xr_raster()` take `params`, a named
