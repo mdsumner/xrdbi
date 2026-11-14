@@ -109,6 +109,14 @@
 
 ## README
 
+* The README's "Verbs and semantics" section showed only errors (the
+  chunk-map section had reused and closed its connection, and a
+  chunk-wide `error = TRUE` let the build pass). Each example now has
+  its own connection and only the intended guard error is allowed.
+  Also corrected: a filter example used the R object's name for the
+  variable, `NA` vs `NaN`, 0-d results, the laziness claims, and the
+  `chunks` note now follows the ERA5 example it is about.
+
 * The README gains a live chunk-map section: the 1024 x 1024 block grid
   of a Sentinel-2 Cloud-Optimized GeoTIFF, and a window's touched blocks
   shaded by how much of each it reads (figure in `man/figures/`).

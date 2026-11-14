@@ -21,16 +21,16 @@ object.
 - tables are variables (data variables and coordinates alike)
 - fields are dimensions, then non-dimension coordinates, then the variable
 - a statement is a Python expression evaluated with `ds` and `xr` in scope
-- `dbSendQuery()` is lazy (builds the xarray selection graph, moves no
-  bytes); the tidy long-form data frame is rendered at `dbFetch()`
+- `dbSendQuery()` is lazy for selections (nothing is read until
+  `dbFetch()` renders the tidy long-form data frame); a statement that
+  computes, such as `.mean()`, runs when sent
 - `tbl(con, var)` gives a lazy dplyr table whose verbs compile to one
   Python statement
 - everything else is one step away via `xr_dataset(con)`
 
 This provides pixel-level rows on demand from anything xarray can open.
 The chunk-level relation (byte ranges, encoded blobs) is deliberately a
-different project; see the dbi-for-xarray design note
-(gdal-r-python/dbi-xarray).
+different project.
 
 ## Status
 
@@ -41,24 +41,21 @@ by hand. Each example below declares the IO engines it needs the same
 way; with your own Python (`RETICULATE_PYTHON`, a conda environment),
 install those there instead. The gdalxarray engine also needs the GDAL
 Python bindings, which pip cannot install: use conda or an image with
-GDAL. The gdal-r-python image is the reference environment, and this
-README is built live in it: every output below came from the remote
+GDAL. The [gdal-r-python image](https://github.com/hypertidy/gdal-r-python/pkgs/container/gdal-r-python)
+(`ghcr.io/hypertidy/gdal-r-python`) is the reference environment, and
+this README is built live in it: every output below came from the remote
 data when it was last built. See `?xrdbi` for the details.
 
 ## Example: OISST NetCDF over HTTPS
 
 ```{r oisst}
-## however you do it: https://rstudio.github.io/reticulate/reference/py_require.html
-##reticulate::use_python("/usr/bin/python3")
 library(DBI)
 library(xrdbi)
 ## netCDF over HTTPS: h5netcdf reads it by byte ranges through fsspec
 reticulate::py_require(c("h5netcdf", "h5py", "fsspec", "aiohttp"))
 
 eg <- "https://www.ncei.noaa.gov/data/sea-surface-temperature-optimum-interpolation/v2.1/access/avhrr/198109/oisst-avhrr-v02r01.19810901.nc"
-con <- dbConnect(xarray(),
-                 eg,
-                 engine = "h5netcdf")  ## chunks = None by default, not reticulate::dict()
+con <- dbConnect(xarray(), eg, engine = "h5netcdf")
 
 dbListTables(con)
 dbListFields(con, "sst")
@@ -68,26 +65,6 @@ dbGetQuery(con, "ds.sst.sel(lat=slice(-56, -55), lon=slice(100, 101)).isel(time=
 
 dbDisconnect(con)
 ```
-
-Note on `chunks`: omitting it (Python `chunks=None` for `open_dataset`)
-gives lazy zarr-backed arrays and a fast connection. Passing
-`chunks = reticulate::dict()` (Python `chunks={}`) wraps every variable
-in dask at native storage chunking; for finely-chunked stores this can
-cost minutes of task-graph construction at connect time (the ARCO ERA5
-store below is 1 timestep per chunk, times 277 variables). Selection via
-`sel`/`isel` is lazy either way and reads only the chunks a slab
-touches, so prefer no dask for extraction, and opt in per statement for
-reductions, rechunking to something sane:
-
-```r
-dbGetQuery(con,
-  "ds['2m_temperature'].chunk({'time': 744}).sel(latitude=slice(19, 18), longitude=slice(73, 74)).mean('time')")
-```
-
-Beware that the default differs by open function: `open_dataset` defaults
-to `chunks=None` (no dask), `open_zarr` defaults to `chunks='auto'`
-(dask). If you connect with `open = "open_zarr"`, pass `chunks =
-reticulate::py_none()` explicitly to get the fast path.
 
 ## Example: ARCO ERA5 (zarr v3, anonymous GCS)
 
@@ -101,6 +78,8 @@ con <- dbConnect(xarray(),
 
 con
 
+## tables are all variables, coordinates included; data variables are
+## the arrays proper (273 here, as the print above counts)
 str(dbListTables(con))
 dbListFields(con, "100m_u_component_of_wind")
 
@@ -132,10 +111,31 @@ head(u)
 Longitude here is 0..360 ascending, so `slice(73, 74)` is fine as-is.
 A quoted date string on `time` selects the whole day.
 
+Note on `chunks`: omitting it (Python `chunks=None` for `open_dataset`)
+gives lazily indexed backend arrays and a fast connection. Passing
+`chunks = reticulate::dict()` (Python `chunks={}`) wraps every variable
+in dask at native storage chunking; for finely-chunked stores this can
+cost minutes of task-graph construction at connect time (this ERA5
+store is 1 timestep per chunk, times 273 data variables). Selection via
+`sel`/`isel` is lazy either way and reads only the chunks a slab
+touches, so prefer no dask for extraction, and opt in per statement for
+reductions, rechunking to something sane:
+
+```r
+dbGetQuery(con,
+  "ds['2m_temperature'].chunk({'time': 744}).sel(latitude=slice(19, 18), longitude=slice(73, 74)).mean('time')")
+```
+
+Beware that the default differs by open function: `open_dataset` defaults
+to `chunks=None` (no dask), `open_zarr` defaults to `chunks='auto'`
+(dask). If you connect with `open = "open_zarr"`, pass `chunks =
+reticulate::py_none()` explicitly to get the fast path.
+
 ## dplyr
 
-`tbl(con, var)` is lazy: verbs accumulate, nothing touches Python until
-`collect()`, and `show_query()` prints the one statement that will run.
+`tbl(con, var)` is lazy: verbs accumulate, no data are read until
+`collect()` (or a print, which shows a small preview), and
+`show_query()` prints the one statement that will run.
 Filters on dimensions push down to `.sel()`, oriented to the coordinate's
 direction, so the descending-latitude gotcha above dissolves. Strict
 bounds keep the inclusive `.sel()` range and trim its boundary with a
@@ -169,7 +169,7 @@ t2m |> filter(latitude < 60)
 dbDisconnect(con)
 ```
 
-Filters on data values (`filter(t2m > 300)`) need a pandas `.query()`
+Filters on data values (`` filter(`2m_temperature` > 300) ``) need a pandas `.query()`
 after rendering, so `head()` and `select()` then run in pandas too;
 `show_query()` makes the split visible.
 
@@ -223,7 +223,8 @@ readonly session at a snapshot is an AS OF query.
 selection touches, as a table: each chunk's index range and coordinate
 extent along every dimension, how many of its cells the selection
 reads, and a rectangle over the two spatial dimensions with the CRS.
-Only coordinates are read. Chunk shapes come from what the backend
+Only coordinates are read. (The geometry column needs the R package
+wk.) Chunk shapes come from what the backend
 records (zarr, netCDF, GDAL blocks via gdalxarray); `level = "shards"`
 maps the shards of a sharded zarr v3 array, and curvilinear grids get
 the envelope of each chunk's 2-D longitude/latitude.
@@ -233,15 +234,17 @@ tile in 1024 x 1024 blocks, through gdalxarray (so, like the VRT above,
 it needs the GDAL Python bindings):
 
 ```{r chunks}
-cog <- "/vsicurl/https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/36/Q/WD/2020/7/S2A_36QWD_20200701_0_L2A/TCI.tif"
-con <- dbConnect(xarray(), cog, engine = "gdalxarray", multidim = FALSE)
+tci <- "/vsicurl/https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/36/Q/WD/2020/7/S2A_36QWD_20200701_0_L2A/TCI.tif"
+## multidim = FALSE opens it as a classic raster: one variable, band_data,
+## over (band, y, x)
+cog <- dbConnect(xarray(), tci, engine = "gdalxarray", multidim = FALSE)
 
-blocks <- xr_chunks(con, "ds.band_data.isel(band=0)")
+blocks <- xr_chunks(cog, "ds.band_data.isel(band=0)")
 nrow(blocks)
 table(blocks$cells)
 
 ## a window: which blocks does reading it touch, and how much of each?
-win <- xr_chunks(con,
+win <- xr_chunks(cog,
   "ds.band_data.isel(band=0, y=slice(3000, 5500), x=slice(2500, 6000))")
 win[, c("y_chunk", "x_chunk", "y_start", "y_stop", "x_start", "x_stop",
         "cells", "selected")] |> head()
@@ -256,7 +259,7 @@ plot(blocks$geometry, border = "grey60")
 plot(win$geometry, add = TRUE, border = "firebrick",
      col = rgb(178, 34, 34, alpha = 255 * (0.15 + 0.6 * used),
                maxColorValue = 255))
-dbDisconnect(con)
+dbDisconnect(cog)
 ```
 
 The touched blocks are shaded by how much of each the window uses: the
@@ -301,7 +304,7 @@ dbDisconnect(obj)
 
 Continuing with the OISST VRT connection:
 
-```{r verbs, error = TRUE}
+```{r verbs}
 ## structured spec compiles to the same python string (inspect it, log it)
 q <- xr_query(vars = "sst",
               sel  = list(lat = c(-56, -55), lon = c(100, 101)),
@@ -317,7 +320,7 @@ dbClearResult(res)
 
 ## whole-variable reads are guarded against accidental terabyte renderings;
 ## move the line with options(xrdbi.max_cells = ), or pass force = TRUE
-dbReadTable(con, "sst")
+try(dbReadTable(con, "sst"))
 
 ## drop down whenever the veneer is in the way
 ds <- xr_dataset(con)
@@ -337,11 +340,12 @@ repeated with `rep()`, so ten million rows arrive in about half a second
 and `dbFetch(n = )` builds only the rows asked for. Types arrive as R
 types: datetimes as POSIXct tagged UTC (or their own zone, if they have
 one), timedeltas as `difftime`, strings, bytes and non-standard calendar
-dates (cftime) as character, categoricals as factors, geometry (the
+dates (cftime) as character, categoricals as factors, and geometry (the
 geometry coordinate of an xvec vector data cube) as `wk::wkb` carrying
-its CRS, and missing values as `NA`. Dimension coordinates render as a single column of their
-values; scalar results as a one-cell frame. The array is a rendering
-format; so is the data frame.
+its CRS. Missing times and nullable integers arrive as `NA`; floating
+point gaps stay `NaN`. A coordinate renders as a single column of its
+values; a 0-d result as one row, a data variable with its scalar
+coordinates. The array is a rendering format; so is the data frame.
 
 Note `isel` in `xr_query()` uses zero-based Python indices: the function
 interpolates values into Python source and does not translate. The
