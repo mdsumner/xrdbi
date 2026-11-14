@@ -1,0 +1,82 @@
+# Draft conda-forge recipe for r-xrdbi (rattler-build v1 format), for
+# conda-forge/staged-recipes once xrdbi is on CRAN: set the version and
+# sha256 of the CRAN tarball. See README.md alongside.
+
+context:
+  version: "0.1.0"
+
+package:
+  name: r-xrdbi
+  version: ${{ version }}
+
+source:
+  url:
+    - ${{ cran_mirror }}/src/contrib/xrdbi_${{ version }}.tar.gz
+    - ${{ cran_mirror }}/src/contrib/Archive/xrdbi/xrdbi_${{ version }}.tar.gz
+  sha256: 0000000000000000000000000000000000000000000000000000000000000000
+
+build:
+  number: 0
+  noarch: generic
+  script:
+    - $R CMD INSTALL --build . $R_ARGS
+    # point reticulate at the environment's Python on activation: without
+    # it, reticulate ignores the conda environment and provisions its own
+    # from PyPI, where gdalxarray cannot work (no GDAL Python bindings)
+    - mkdir -p $PREFIX/etc/conda/activate.d $PREFIX/etc/conda/deactivate.d
+    - cp $RECIPE_DIR/activate.sh $PREFIX/etc/conda/activate.d/r-xrdbi_activate.sh
+    - cp $RECIPE_DIR/deactivate.sh $PREFIX/etc/conda/deactivate.d/r-xrdbi_deactivate.sh
+    - cp $RECIPE_DIR/activate.bat $PREFIX/etc/conda/activate.d/r-xrdbi_activate.bat
+    - cp $RECIPE_DIR/deactivate.bat $PREFIX/etc/conda/deactivate.d/r-xrdbi_deactivate.bat
+
+requirements:
+  host:
+    - r-base
+    - r-dbi >=1.2.0
+    - r-dplyr
+    - r-reticulate >=1.41.0
+    - r-rlang
+  run:
+    - r-base
+    - r-dbi >=1.2.0
+    - r-dplyr
+    - r-reticulate >=1.41.0
+    - r-rlang
+    # the Python side: what xrdbi declares on load, plus the GDAL engine
+    # that only conda (not pip) can make work
+    - python >=3.11
+    # reticulate embeds Python, which needs the shared libpython; conda-forge
+    # ships it as its own package, which python alone does not pull in
+    - libpython
+    # for a Python in a conda-layout environment, reticulate runs
+    # `conda run` once (to learn the activated PATH) and fails without a
+    # conda-like binary; micromamba provides one where none is on PATH
+    # (pixi environments, build sandboxes)
+    - micromamba
+    - xarray
+    - netcdf4
+    - gdal
+    - gdalxarray
+
+tests:
+  - script:
+      - Rscript run_test.R
+    files:
+      recipe:
+        - run_test.R
+
+about:
+  homepage: https://github.com/mdsumner/xrdbi
+  repository: https://github.com/mdsumner/xrdbi
+  license: MIT
+  license_file: LICENSE
+  summary: "'DBI' backend for 'xarray' via a live 'reticulate' session"
+  description: |
+    Treats a live Python session holding an 'xarray' object as a database
+    connection: tables are variables, fields are dimensions and
+    coordinates, queries are Python expressions (or dplyr verbs) evaluated
+    lazily, and fetching renders the tidy long form built in R.
+
+extra:
+  recipe-maintainers:
+    - mdsumner

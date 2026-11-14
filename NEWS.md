@@ -58,6 +58,15 @@
 
 ## CRAN preparation
 
+* A draft conda-forge recipe lives in `tools/conda/` (not part of the R
+  package), validated with rattler-build in a clean sandbox. Its
+  activation script points reticulate at the environment's Python,
+  which reticulate otherwise ignores in favour of provisioning from PyPI
+  (where gdalxarray cannot work); it also needs `libpython`, which
+  conda-forge ships separately, and `micromamba`, without which reticulate
+  cannot use a conda-layout environment where no conda binary is found
+  (pixi, build sandboxes).
+
 * Loading xrdbi now declares only its core Python requirements, xarray
   and netCDF4 (local netCDF-3 and netCDF-4). It declared gdalxarray too,
   which pip can install but not make work (it needs the GDAL Python
