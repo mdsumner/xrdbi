@@ -158,6 +158,40 @@ test_that("xarray string, cftime and timedelta coords fetch as R types", {
   expect_equal(rbind(a, b), df)
 })
 
+test_that("a geometry index's CRS reaches wk, for object and extension dtypes", {
+  skip_if_no_xarray()
+  skip_if_not_installed("wk")
+  skip_if_not(reticulate::py_module_available("xvec"), "python xvec not available")
+  skip_if_not(reticulate::py_module_available("geopandas"),
+              "python geopandas not available")
+  ## REGRESSION: a coordinate built from a GeoSeries' values has geopandas'
+  ## 'geometry' extension dtype (xvec's zonal_stats() returns one), and its
+  ## CRS was dropped because only object dtype was looked at
+  con <- DBI::dbConnect(xarray(), builder = function(xr) {
+    reticulate::py_run_string(paste(
+      "import xarray as _xr, numpy as _np, geopandas as _gpd, shapely as _sh, xvec",
+      "_gs = _gpd.GeoSeries([_sh.Point(1, 2), _sh.box(0, 0, 1, 1)], crs='EPSG:3031')",
+      "def _cube(g):",
+      "    return _xr.Dataset({'v': (('time', 'geometry'), _np.arange(4.).reshape(2, 2))},",
+      "        coords={'time': [10, 20], 'geometry': g}).xvec.set_geom_indexes(",
+      "        'geometry', crs=_gs.crs)",
+      sep = "\n"), convert = FALSE)
+    reticulate::py_eval("_cube(_gs.values)", convert = FALSE)
+  })
+  on.exit(DBI::dbDisconnect(con))
+  con2 <- DBI::dbConnect(xarray(), object = reticulate::py_eval(
+    "_cube(_np.asarray(_gs, dtype=object))", convert = FALSE))
+  on.exit(DBI::dbDisconnect(con2), add = TRUE)
+  expect_identical(DBI::dbGetQuery(con, "str(ds.geometry.dtype)")$value, "geometry")
+  expect_identical(DBI::dbGetQuery(con2, "str(ds.geometry.dtype)")$value, "object")
+  ext <- DBI::dbGetQuery(con, "ds.v")
+  obj <- DBI::dbGetQuery(con2, "ds.v")
+  expect_identical(wk::wk_crs(ext$geometry), "EPSG:3031")
+  expect_identical(wk::wk_crs(obj$geometry), "EPSG:3031")
+  expect_identical(as.character(wk::as_wkt(ext$geometry)),
+                   as.character(wk::as_wkt(obj$geometry)))
+})
+
 test_that("shapely geometry arrives as wk::wkb, or WKT text without wk", {
   skip_if_no_xarray()
   skip_if_not_installed("wk")

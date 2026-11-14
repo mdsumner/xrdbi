@@ -331,7 +331,13 @@ def _xrdbi_geom_crs(obj):
     out = {}
     for name, ix in getattr(obj, 'xindexes', {}).items():
         crs = getattr(ix, 'crs', None)
-        if crs is None or name not in obj.coords or obj[name].dtype != object:
+        if crs is None or name not in obj.coords:
+            continue
+        # geometry is an object array of shapely values, or geopandas'
+        # 'geometry' extension dtype (a coordinate built from a GeoSeries'
+        # values, as xvec's zonal_stats() returns)
+        dt = obj.coords[name].dtype
+        if dt != object and str(dt) != 'geometry':
             continue
         auth = crs.to_authority()
         out[str(name)] = ':'.join(auth) if auth else crs.to_wkt()

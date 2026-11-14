@@ -150,6 +150,11 @@
 
 ## Fixes
 
+* A vector cube's geometry keeps its CRS when the geometry coordinate has
+  geopandas' `geometry` extension dtype, as the result of xvec's
+  `zonal_stats()` does. Only object-dtype coordinates were looked at, so
+  the values arrived as `wk::wkb()` but without the CRS.
+
 * `collect()` on a `tbl()` takes `max_cells`, like the other guarded
   functions. It went into `...` and was ignored, so `collect(x, max_cells
   = 10)` read everything. `as.data.frame()` takes the same arguments and
