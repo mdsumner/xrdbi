@@ -360,3 +360,24 @@ test_that("the collect guard counts the coordinate block, not the grid", {
   x <- dplyr::filter(dplyr::tbl(con, "t"), lat > -55, lat < -50, lon > 110, lon < 115)
   expect_equal(nrow(dplyr::collect(x)), 327L)
 })
+
+test_that("a POSIXct in any zone filters by its instant, as UTC", {
+  ## REGRESSION: literals were formatted in the object's own zone, so a
+  ## Hobart-zoned bound selected by Hobart wall-clock time, 11 hours off
+  hob <- as.POSIXct("2026-01-02 11:00:00", tz = "Australia/Hobart")
+  utc <- as.POSIXct("2026-01-02 00:00:00", tz = "UTC")
+  expect_identical(as.numeric(hob), as.numeric(utc))
+  x <- dplyr::filter(shell(), time >= hob)
+  expect_equal(compile1(x, dims = c("time", "lat", "lon")),
+               "ds['sst'].sel(time=slice('2026-01-02T00:00:00', None))")
+  expect_identical(xrdbi:::py_literal(hob), "'2026-01-02T00:00:00'")
+  expect_identical(xrdbi:::q_literal(hob), '"2026-01-02T00:00:00"')
+
+  skip_if_no_xarray()
+  con <- make_con()
+  on.exit(DBI::dbDisconnect(con))
+  a <- dplyr::collect(dplyr::filter(dplyr::tbl(con, "sst"), time >= hob))
+  b <- dplyr::collect(dplyr::filter(dplyr::tbl(con, "sst"), time >= utc))
+  expect_identical(a, b)
+  expect_equal(nrow(a), 2L * 4L * 5L)
+})

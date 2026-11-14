@@ -518,7 +518,8 @@ q_pred <- function(p) {
 q_literal <- function(x) {
   if (inherits(x, "Date")) return(paste0('"', format(x, "%Y-%m-%d"), '"'))
   if (inherits(x, "POSIXct")) {
-    return(paste0('"', format(x, "%Y-%m-%dT%H:%M:%S"), '"'))
+    ## the instant, as naive UTC: how xarray stores times
+    return(paste0('"', format(x, "%Y-%m-%dT%H:%M:%S", tz = "UTC"), '"'))
   }
   if (is.character(x)) {
     return(paste0('"', gsub('"', '\\\\"', x), '"'))

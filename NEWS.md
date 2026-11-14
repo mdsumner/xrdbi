@@ -107,6 +107,11 @@
 
 ## Fixes
 
+* A POSIXct in a `tbl()` filter or `xr_query()` is compiled as its instant
+  in UTC, as xarray stores times. It was written as wall-clock time in the
+  object's own zone, so a bound in e.g. Australia/Hobart selected 11 hours
+  off. (`params` already converted to UTC.)
+
 * `xr_raster()` and `xr_chunks()` find a CRS from a CF `grid_mapping`
   variable's parameters (`grid_mapping_name` and the rest), through
   pyproj when installed, as a last resort: authored WKT (`crs_wkt`,

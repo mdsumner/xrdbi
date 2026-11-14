@@ -80,9 +80,11 @@ compile_indexers <- function(x, integer = FALSE) {
 }
 
 py_literal <- function(x, integer = FALSE) {
-  if (inherits(x, "Date") || inherits(x, "POSIXct")) {
-    return(py_repr_string(format(x, if (inherits(x, "Date")) "%Y-%m-%d"
-                                    else "%Y-%m-%dT%H:%M:%S")))
+  if (inherits(x, "Date")) return(py_repr_string(format(x, "%Y-%m-%d")))
+  if (inherits(x, "POSIXct")) {
+    ## the instant, as naive UTC: how xarray stores times (a POSIXct in
+    ## another zone would otherwise be read as its wall-clock time)
+    return(py_repr_string(format(x, "%Y-%m-%dT%H:%M:%S", tz = "UTC")))
   }
   if (is.character(x)) return(py_repr_string(x))
   if (is.logical(x)) return(if (isTRUE(x)) "True" else "False")
