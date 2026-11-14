@@ -320,6 +320,13 @@ identically in tbl pipelines and raw statements.
   GDAL_AUTOTEST environment variable is now only needed when updating
   fixtures, never for testing.
 
+* The `rotated_pole.nc` tests name their engine. Without one, a Python
+  missing netCDF4 opened the file with gdalxarray, and the grid-mapping
+  test skipped as an engine difference instead of saying netCDF4 was
+  missing. netcdf4 keeps `projection` as a 0-d variable; a new test
+  checks that gdalxarray's classic mode puts the rotated-pole CRS in
+  `xr_raster()`'s `srs`.
+
 
 # xrdbi 0.0.1.9000 (development)
 
