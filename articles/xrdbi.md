@@ -132,7 +132,8 @@ dbGetQuery(con,
 
 [`xr_query()`](https://mdsumner.github.io/xrdbi/reference/xr_query.md)
 writes a statement from a structured selection, if you would rather not
-write the Python. The result is just a string.
+write the Python. The result is just a string, and `isel` positions are
+written into it as given, so they count from zero, as Python’s do.
 
 ``` r
 q <- xr_query(vars = "pcp", sel = list(latitude = c(-12, -11)),

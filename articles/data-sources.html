@@ -19,7 +19,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">xrdbi</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.1.9033</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.1.9034</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -281,36 +281,61 @@ opening reads only the VRT. gdalxarray also takes
 open and every read.</p>
 <p>A connection is a snapshot. This VRT gains a day on a schedule, and a
 connection made before that keeps answering from the old version; a new
-connection sees the new day.</p>
+connection sees the new day. For a record that does not move, open a
+dated version: <code>oisst-mdim-20260630.vrt</code>, beside it, holds
+the days to the end of June 2026.</p>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbDisconnect.html" class="external-link">dbDisconnect</a></span><span class="op">(</span><span class="va">con</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level2">
-<h2 id="virtual-stores-and-icechunk">Virtual stores and icechunk<a class="anchor" aria-label="anchor" href="#virtual-stores-and-icechunk"></a>
+<h2 id="icechunk-and-virtual-stores">Icechunk and virtual stores<a class="anchor" aria-label="anchor" href="#icechunk-and-virtual-stores"></a>
 </h2>
 <p>A builder covers sources that take more than one call: kerchunk or
-VirtualiZarr references, or an icechunk repository, where a readonly
-session at a snapshot is a fixed version of the data. The shape, for an
-icechunk repository in a public S3 bucket (illustrative, with
-placeholder names):</p>
+VirtualiZarr references, or an icechunk repository. Icechunk versions a
+zarr store, and a readonly session at a branch, tag or snapshot is a
+fixed version of the data.</p>
+<p>This repository, on Source Cooperative, holds daily ocean salinity
+from the BRAN reanalysis as a <em>virtual</em> store: its metadata and
+coordinates are in the repository, and each data chunk is a byte range
+in the original netCDF files on NCI’s THREDDS server. Icechunk reads
+virtual chunks only from locations it is authorized for, so the builder
+authorizes that server, and caps concurrent requests, since THREDDS
+resets connections above about ten:</p>
 <div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">reticulate</span><span class="fu">::</span><span class="fu"><a href="https://rstudio.github.io/reticulate/reference/py_require.html" class="external-link">py_require</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"icechunk"</span>, <span class="st">"zarr"</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="va">con</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://dbi.r-dbi.org/reference/dbConnect.html" class="external-link">dbConnect</a></span><span class="op">(</span><span class="fu"><a href="../reference/xarray.html">xarray</a></span><span class="op">(</span><span class="op">)</span>, builder <span class="op">=</span> <span class="kw">function</span><span class="op">(</span><span class="va">xr</span><span class="op">)</span> <span class="op">{</span></span>
 <span>  <span class="va">ic</span> <span class="op">&lt;-</span> <span class="fu">reticulate</span><span class="fu">::</span><span class="fu"><a href="https://rstudio.github.io/reticulate/reference/import.html" class="external-link">import</a></span><span class="op">(</span><span class="st">"icechunk"</span>, convert <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
-<span>  <span class="va">repo</span> <span class="op">&lt;-</span> <span class="va">ic</span><span class="op">$</span><span class="va">Repository</span><span class="op">$</span><span class="fu">open</span><span class="op">(</span><span class="va">ic</span><span class="op">$</span><span class="fu">s3_storage</span><span class="op">(</span></span>
-<span>    bucket <span class="op">=</span> <span class="st">"a-bucket"</span>, prefix <span class="op">=</span> <span class="st">"a-repo"</span>, region <span class="op">=</span> <span class="st">"ap-southeast-2"</span>,</span>
-<span>    anonymous <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span><span class="op">)</span></span>
-<span>  <span class="va">session</span> <span class="op">&lt;-</span> <span class="va">repo</span><span class="op">$</span><span class="fu">readonly_session</span><span class="op">(</span><span class="st">"main"</span><span class="op">)</span></span>
-<span>  <span class="va">xr</span><span class="op">$</span><span class="fu">open_zarr</span><span class="op">(</span><span class="va">session</span><span class="op">$</span><span class="va">store</span>, consolidated <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  <span class="va">storage</span> <span class="op">&lt;-</span> <span class="va">ic</span><span class="op">$</span><span class="fu">s3_storage</span><span class="op">(</span></span>
+<span>    bucket <span class="op">=</span> <span class="st">"us-west-2.opendata.source.coop"</span>,</span>
+<span>    prefix <span class="op">=</span> <span class="st">"ausantarctic/ausantarctic-scratch/bluelink/bluelink-daily-salt/icechunk"</span>,</span>
+<span>    region <span class="op">=</span> <span class="st">"us-west-2"</span>, anonymous <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
+<span>  <span class="va">config</span> <span class="op">&lt;-</span> <span class="va">ic</span><span class="op">$</span><span class="va">Repository</span><span class="op">$</span><span class="fu">fetch_config</span><span class="op">(</span><span class="va">storage</span><span class="op">)</span></span>
+<span>  <span class="va">config</span><span class="op">$</span><span class="va">max_concurrent_requests</span> <span class="op">&lt;-</span> <span class="fl">4L</span></span>
+<span>  <span class="va">repo</span> <span class="op">&lt;-</span> <span class="va">ic</span><span class="op">$</span><span class="va">Repository</span><span class="op">$</span><span class="fu">open</span><span class="op">(</span><span class="va">storage</span>, config <span class="op">=</span> <span class="va">config</span>,</span>
+<span>    authorize_virtual_chunk_access <span class="op">=</span> <span class="fu">reticulate</span><span class="fu">::</span><span class="fu"><a href="https://rstudio.github.io/reticulate/reference/dict.html" class="external-link">dict</a></span><span class="op">(</span></span>
+<span>      <span class="st">"https://thredds.nci.org.au/"</span> <span class="op">=</span> <span class="va">ic</span><span class="op">$</span><span class="va">credentials</span><span class="op">$</span><span class="va">HttpAccess</span><span class="op">)</span><span class="op">)</span></span>
+<span>  <span class="va">xr</span><span class="op">$</span><span class="fu">open_zarr</span><span class="op">(</span><span class="va">repo</span><span class="op">$</span><span class="fu">readonly_session</span><span class="op">(</span><span class="st">"main"</span><span class="op">)</span><span class="op">$</span><span class="va">store</span>, consolidated <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>               chunks <span class="op">=</span> <span class="fu">reticulate</span><span class="fu">::</span><span class="fu"><a href="https://rstudio.github.io/reticulate/reference/py_none.html" class="external-link">py_none</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="op">}</span><span class="op">)</span></span></code></pre></div>
+<span><span class="op">}</span><span class="op">)</span></span>
+<span><span class="va">con</span></span>
+<span><span class="co">#&gt; &lt;XarrayConnection&gt;</span></span>
+<span><span class="co">#&gt;   dims: Time: 12265, st_ocean: 51, yt_ocean: 1500, xt_ocean: 3600</span></span>
+<span><span class="co">#&gt;   vars: salt</span></span></code></pre></div>
+<p>Each chunk of <code>salt</code> is one day at one depth over a 300 by
+300 cell block, so a value at the surface is one range request:</p>
+<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbGetQuery.html" class="external-link">dbGetQuery</a></span><span class="op">(</span><span class="va">con</span>, <span class="st">"ds.salt.sel(Time='2020-01-01', st_ocean=0, yt_ocean=-45,</span></span>
+<span><span class="st">                             xt_ocean=147.5, method='nearest')"</span><span class="op">)</span></span>
+<span><span class="co">#&gt;                  Time st_ocean yt_ocean xt_ocean     salt</span></span>
+<span><span class="co">#&gt; 1 2020-01-01 12:00:00      2.5   -45.05   147.45 35.11521</span></span>
+<span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbDisconnect.html" class="external-link">dbDisconnect</a></span><span class="op">(</span><span class="va">con</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="a-dataset-built-in-python">A Dataset built in Python<a class="anchor" aria-label="anchor" href="#a-dataset-built-in-python"></a>
 </h2>
 <p><code>object =</code> adopts a Dataset that already exists, however
 it was made:</p>
-<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">reticulate</span><span class="fu">::</span><span class="fu"><a href="https://rstudio.github.io/reticulate/reference/py_run.html" class="external-link">py_run_string</a></span><span class="op">(</span><span class="st">"</span></span>
 <span><span class="st">import xarray, numpy</span></span>
 <span><span class="st">myds = xarray.Dataset({'v': (('y', 'x'), numpy.arange(6.).reshape(2, 3))},</span></span>

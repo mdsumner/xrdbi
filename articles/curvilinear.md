@@ -127,7 +127,7 @@ reticulate::py_run_string(sprintf(
 z <- dbConnect(xarray(), path, engine = "zarr", consolidated = FALSE)
 z
 #> <XarrayConnection>
-#>   dsn: /tmp/RtmpyqUzdw/filebbc17aef635/curvi.zarr
+#>   dsn: /tmp/Rtmpj9RRKA/filebbb73abe1e5/curvi.zarr
 #>   dims: y: 108, x: 137
 #>   vars: tg
 ```

@@ -209,31 +209,60 @@ every read.
 
 A connection is a snapshot. This VRT gains a day on a schedule, and a
 connection made before that keeps answering from the old version; a new
-connection sees the new day.
+connection sees the new day. For a record that does not move, open a
+dated version: `oisst-mdim-20260630.vrt`, beside it, holds the days to
+the end of June 2026.
 
 ``` r
 dbDisconnect(con)
 ```
 
-## Virtual stores and icechunk
+## Icechunk and virtual stores
 
 A builder covers sources that take more than one call: kerchunk or
-VirtualiZarr references, or an icechunk repository, where a readonly
-session at a snapshot is a fixed version of the data. The shape, for an
-icechunk repository in a public S3 bucket (illustrative, with
-placeholder names):
+VirtualiZarr references, or an icechunk repository. Icechunk versions a
+zarr store, and a readonly session at a branch, tag or snapshot is a
+fixed version of the data.
+
+This repository, on Source Cooperative, holds daily ocean salinity from
+the BRAN reanalysis as a *virtual* store: its metadata and coordinates
+are in the repository, and each data chunk is a byte range in the
+original netCDF files on NCI’s THREDDS server. Icechunk reads virtual
+chunks only from locations it is authorized for, so the builder
+authorizes that server, and caps concurrent requests, since THREDDS
+resets connections above about ten:
 
 ``` r
 reticulate::py_require(c("icechunk", "zarr"))
 con <- dbConnect(xarray(), builder = function(xr) {
   ic <- reticulate::import("icechunk", convert = FALSE)
-  repo <- ic$Repository$open(ic$s3_storage(
-    bucket = "a-bucket", prefix = "a-repo", region = "ap-southeast-2",
-    anonymous = TRUE))
-  session <- repo$readonly_session("main")
-  xr$open_zarr(session$store, consolidated = FALSE,
+  storage <- ic$s3_storage(
+    bucket = "us-west-2.opendata.source.coop",
+    prefix = "ausantarctic/ausantarctic-scratch/bluelink/bluelink-daily-salt/icechunk",
+    region = "us-west-2", anonymous = TRUE)
+  config <- ic$Repository$fetch_config(storage)
+  config$max_concurrent_requests <- 4L
+  repo <- ic$Repository$open(storage, config = config,
+    authorize_virtual_chunk_access = reticulate::dict(
+      "https://thredds.nci.org.au/" = ic$credentials$HttpAccess))
+  xr$open_zarr(repo$readonly_session("main")$store, consolidated = FALSE,
                chunks = reticulate::py_none())
 })
+con
+#> <XarrayConnection>
+#>   dims: Time: 12265, st_ocean: 51, yt_ocean: 1500, xt_ocean: 3600
+#>   vars: salt
+```
+
+Each chunk of `salt` is one day at one depth over a 300 by 300 cell
+block, so a value at the surface is one range request:
+
+``` r
+dbGetQuery(con, "ds.salt.sel(Time='2020-01-01', st_ocean=0, yt_ocean=-45,
+                             xt_ocean=147.5, method='nearest')")
+#>                  Time st_ocean yt_ocean xt_ocean     salt
+#> 1 2020-01-01 12:00:00      2.5   -45.05   147.45 35.11521
+dbDisconnect(con)
 ```
 
 ## A Dataset built in Python

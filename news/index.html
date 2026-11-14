@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">xrdbi</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.1.9033</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.1.9034</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -62,6 +62,7 @@
 <li><p>A pkgdown site (<a href="https://mdsumner.github.io/xrdbi/" class="uri">https://mdsumner.github.io/xrdbi/</a>), built by a GitHub Action in the <code>ghcr.io/hypertidy/gdal-r-python</code> image so live articles can reach GDAL and public cloud data. The reference index is grouped by task.</p></li>
 <li><p>New “Get started” vignette, pre-computed: its outputs are knitted locally from <code>vignettes/xrdbi.Rmd.orig</code> on the bundled <code>trmm.nc</code> (<code>tools/precompute.R</code>), so it builds on CRAN without Python. New “Python environments” article: letting reticulate manage Python, your own Python, conda and pixi (and what reticulate needs there), the gdal-r-python image, and how to check what you have. The deploy step installs rsync, which the image lacks and the deploy action needs. The site’s R dependencies install with pak’s system requirements off and without upgrading the image’s packages: apt’s GDAL and GEOS beside the image’s own gave shapely the wrong <code>libgeos_c.so.1</code>, and a smoke step now loads sf and shapely together before the build. The build turns off dask’s array query planning, which the image turns on and under which <code>open_mfdataset()</code> fails; “Python environments” says how.</p></li>
 <li><p>Eight more articles, built live on the site: “Querying with dplyr” (how each verb compiles and what gets read), “Parameters”, “From arrays to rows” (the shape and types of results, and when work happens), “Data sources” (a cookbook: netCDF over HTTPS, many files, zarr on Google Cloud and S3, GDAL rasters and VRTs, virtual stores), “Rasters”, “Chunk maps”, “Curvilinear grids and vector cubes”, and “Design notes”. The articles index groups them, and Get started and <code><a href="../reference/xrdbi-package.html">?xrdbi</a></code> link to them.</p></li>
+<li><p>The README is now a landing page: what xrdbi is, installation, one live example on ERA5 (a value, a dplyr filter, the guard, and a global hour rendered with <code><a href="../reference/xr_raster.html">xr_raster()</a></code>), and links to the articles. Its tutorial sections moved to the articles. <code>tools/build-readme.sh</code> knits it live in the gdal-r-python image. “Data sources” now opens a real icechunk repository (BRAN daily salinity on Source Cooperative, a virtual store over NCI THREDDS) in place of placeholder names, replacing the README’s icechunk example, whose repository no longer exists.</p></li>
 </ul></div>
 <div class="section level3">
 <h3 id="chunk-maps-development-version">Chunk maps<a class="anchor" aria-label="anchor" href="#chunk-maps-development-version"></a></h3>

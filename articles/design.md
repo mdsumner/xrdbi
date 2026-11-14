@@ -124,3 +124,5 @@ chunk.
   where a readonly session at a snapshot is an AS OF query
 - a switch for coordinates in renderings: 2-D coordinates are broadcast
   into every row of a variable, which is faithful but can be heavy
+- registry integration: `dbConnect(xarray(), sds::dsn("oisst"))`, where
+  a registry entry carries the open function and its arguments

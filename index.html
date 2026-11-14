@@ -21,7 +21,7 @@
 
     <a class="navbar-brand me-2" href="index.html">xrdbi</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.1.9033</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.1.9034</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -71,355 +71,108 @@
   <main id="main" class="col-md-9"><div class="section level1">
 <div class="page-header"><h1 id="xrdbi">xrdbi<a class="anchor" aria-label="anchor" href="#xrdbi"></a>
 </h1></div>
-<p>A DBI backend for xarray. The “database” is a live Python session (reticulate) holding an xarray object; the connection is a handle to that object.</p>
+<p>xrdbi is a <a href="https://dbi.r-dbi.org" class="external-link">DBI</a> backend for <a href="https://xarray.dev" class="external-link">xarray</a>. The “database” is an xarray Dataset in a live Python session, reached through <a href="https://rstudio.github.io/reticulate/" class="external-link">reticulate</a>, and a connection is a handle to it:</p>
 <ul>
-<li>tables are variables (data variables and coordinates alike)</li>
-<li>fields are dimensions, then non-dimension coordinates, then the variable</li>
-<li>a statement is a Python expression evaluated with <code>ds</code> and <code>xr</code> in scope</li>
-<li>
-<code><a href="https://dbi.r-dbi.org/reference/dbSendQuery.html" class="external-link">dbSendQuery()</a></code> is lazy for selections (nothing is read until <code><a href="https://dbi.r-dbi.org/reference/dbFetch.html" class="external-link">dbFetch()</a></code> renders the tidy long-form data frame); a statement that computes, such as <code>.mean()</code>, runs when sent</li>
-<li>
-<code>tbl(con, var)</code> gives a lazy dplyr table whose verbs compile to one Python statement</li>
-<li>everything else is one step away via <code>xr_dataset(con)</code>
-</li>
+<li>tables are the Dataset’s variables</li>
+<li>fields are a variable’s dimensions and coordinates, then the variable itself</li>
+<li>a statement is a Python expression over <code>ds</code>, and its result arrives as tidy rows, one per cell</li>
 </ul>
-<p>This provides pixel-level rows on demand from anything xarray can open. The chunk-level relation (byte ranges, encoded blobs) is deliberately a different project.</p>
+<p>dplyr verbs compile to the same statements, <code><a href="reference/xr_raster.html">xr_raster()</a></code> renders a slab as a raster, and <code><a href="reference/xr_chunks.html">xr_chunks()</a></code> maps the storage chunks a selection touches. Anything xarray can open is in reach: netCDF and HDF5 files, zarr in the cloud, virtual and icechunk stores, and, through the gdalxarray engine, anything GDAL reads.</p>
+<p>Documentation: <a href="https://mdsumner.github.io/xrdbi/" class="uri">https://mdsumner.github.io/xrdbi/</a></p>
 <div class="section level2">
-<h2 id="status">Status<a class="anchor" aria-label="anchor" href="#status"></a>
-</h2>
-<p>Loading xrdbi declares its core Python requirements with <code><a href="https://rstudio.github.io/reticulate/reference/py_require.html" class="external-link">reticulate::py_require()</a></code>: xarray and netCDF4. With no Python configured, reticulate provisions them on first use, nothing to install by hand. Each example below declares the IO engines it needs the same way; with your own Python (<code>RETICULATE_PYTHON</code>, a conda environment), install those there instead. The gdalxarray engine also needs the GDAL Python bindings, which pip cannot install: use conda or an image with GDAL. The <a href="https://github.com/hypertidy/gdal-r-python/pkgs/container/gdal-r-python" class="external-link">gdal-r-python image</a> (<code>ghcr.io/hypertidy/gdal-r-python</code>) is the reference environment, and this README is built live in it: every output below came from the remote data when it was last built. See <code><a href="reference/xrdbi-package.html">?xrdbi</a></code> for the details.</p>
-</div>
-<div class="section level2">
-<h2 id="example-oisst-netcdf-over-https">Example: OISST NetCDF over HTTPS<a class="anchor" aria-label="anchor" href="#example-oisst-netcdf-over-https"></a>
+<h2 id="installation">Installation<a class="anchor" aria-label="anchor" href="#installation"></a>
 </h2>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://dbi.r-dbi.org" class="external-link">DBI</a></span><span class="op">)</span></span>
-<span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/mdsumner/xrdbi" class="external-link">xrdbi</a></span><span class="op">)</span></span>
-<span><span class="co">## netCDF over HTTPS: h5netcdf reads it by byte ranges through fsspec</span></span>
-<span><span class="fu">reticulate</span><span class="fu">::</span><span class="fu"><a href="https://rstudio.github.io/reticulate/reference/py_require.html" class="external-link">py_require</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"h5netcdf"</span>, <span class="st">"h5py"</span>, <span class="st">"fsspec"</span>, <span class="st">"aiohttp"</span><span class="op">)</span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">eg</span> <span class="op">&lt;-</span> <span class="st">"https://www.ncei.noaa.gov/data/sea-surface-temperature-optimum-interpolation/v2.1/access/avhrr/198109/oisst-avhrr-v02r01.19810901.nc"</span></span>
-<span><span class="va">con</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://dbi.r-dbi.org/reference/dbConnect.html" class="external-link">dbConnect</a></span><span class="op">(</span><span class="fu"><a href="reference/xarray.html">xarray</a></span><span class="op">(</span><span class="op">)</span>, <span class="va">eg</span>, engine <span class="op">=</span> <span class="st">"h5netcdf"</span><span class="op">)</span></span>
-<span></span>
-<span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbListTables.html" class="external-link">dbListTables</a></span><span class="op">(</span><span class="va">con</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] "anom" "err"  "ice"  "sst"  "lat"  "lon"  "time" "zlev"</span></span>
-<span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbListFields.html" class="external-link">dbListFields</a></span><span class="op">(</span><span class="va">con</span>, <span class="st">"sst"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] "time" "zlev" "lat"  "lon"  "sst"</span></span>
-<span></span>
-<span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbGetQuery.html" class="external-link">dbGetQuery</a></span><span class="op">(</span><span class="va">con</span>, <span class="st">"ds.sst.sel(lat=slice(-56, -55), lon=slice(100, 101)).isel(time=0)"</span><span class="op">)</span> <span class="op">|&gt;</span></span>
-<span>  <span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="op">)</span></span>
-<span><span class="co">#&gt;   zlev     lat     lon                time   sst</span></span>
-<span><span class="co">#&gt; 1    0 -55.875 100.125 1981-09-01 12:00:00 -0.06</span></span>
-<span><span class="co">#&gt; 2    0 -55.875 100.375 1981-09-01 12:00:00 -0.14</span></span>
-<span><span class="co">#&gt; 3    0 -55.875 100.625 1981-09-01 12:00:00 -0.17</span></span>
-<span><span class="co">#&gt; 4    0 -55.875 100.875 1981-09-01 12:00:00 -0.11</span></span>
-<span><span class="co">#&gt; 5    0 -55.625 100.125 1981-09-01 12:00:00  0.06</span></span>
-<span><span class="co">#&gt; 6    0 -55.625 100.375 1981-09-01 12:00:00  0.00</span></span>
-<span></span>
-<span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbDisconnect.html" class="external-link">dbDisconnect</a></span><span class="op">(</span><span class="va">con</span><span class="op">)</span></span></code></pre></div>
+<code class="sourceCode R"><span><span class="co"># install.packages("pak")</span></span>
+<span><span class="fu">pak</span><span class="fu">::</span><span class="fu"><a href="https://pak.r-lib.org/reference/pak.html" class="external-link">pak</a></span><span class="op">(</span><span class="st">"mdsumner/xrdbi"</span><span class="op">)</span></span></code></pre></div>
+<p>xrdbi declares its core Python requirements, xarray and netCDF4, when it loads, so with no Python configured, reticulate provisions them on first use. Other engines and file systems are declared the same way, as in the example below. To use your own Python, conda or pixi, or the gdal-r-python image, see <a href="https://mdsumner.github.io/xrdbi/articles/python-environments.html">Python environments</a>.</p>
 </div>
 <div class="section level2">
-<h2 id="example-arco-era5-zarr-v3-anonymous-gcs">Example: ARCO ERA5 (zarr v3, anonymous GCS)<a class="anchor" aria-label="anchor" href="#example-arco-era5-zarr-v3-anonymous-gcs"></a>
+<h2 id="example">Example<a class="anchor" aria-label="anchor" href="#example"></a>
 </h2>
+<p>The ARCO ERA5 reanalysis on Google Cloud is one zarr store: 273 variables, hourly on a quarter-degree global grid.</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu">reticulate</span><span class="fu">::</span><span class="fu"><a href="https://rstudio.github.io/reticulate/reference/py_require.html" class="external-link">py_require</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"zarr"</span>, <span class="st">"gcsfs"</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="va">era</span> <span class="op">&lt;-</span> <span class="st">"gs://gcp-public-data-arco-era5/ar/full_37-1h-0p25deg-chunk-1.zarr-v3"</span></span>
-<span><span class="va">con</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://dbi.r-dbi.org/reference/dbConnect.html" class="external-link">dbConnect</a></span><span class="op">(</span><span class="fu"><a href="reference/xarray.html">xarray</a></span><span class="op">(</span><span class="op">)</span>,</span>
-<span>                 <span class="va">era</span>,</span>
-<span>                 engine <span class="op">=</span> <span class="st">"zarr"</span>,</span>
-<span>                 storage_options <span class="op">=</span> <span class="fu">reticulate</span><span class="fu">::</span><span class="fu"><a href="https://rstudio.github.io/reticulate/reference/dict.html" class="external-link">dict</a></span><span class="op">(</span>token <span class="op">=</span> <span class="st">"anon"</span><span class="op">)</span><span class="op">)</span></span>
+<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://dbi.r-dbi.org" class="external-link">DBI</a></span><span class="op">)</span></span>
+<span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/mdsumner/xrdbi" class="external-link">xrdbi</a></span><span class="op">)</span></span>
+<span><span class="fu">reticulate</span><span class="fu">::</span><span class="fu"><a href="https://rstudio.github.io/reticulate/reference/py_require.html" class="external-link">py_require</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"zarr"</span>, <span class="st">"gcsfs"</span><span class="op">)</span><span class="op">)</span></span>
 <span></span>
+<span><span class="va">era</span> <span class="op">&lt;-</span> <span class="st">"gs://gcp-public-data-arco-era5/ar/full_37-1h-0p25deg-chunk-1.zarr-v3"</span></span>
+<span><span class="va">con</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://dbi.r-dbi.org/reference/dbConnect.html" class="external-link">dbConnect</a></span><span class="op">(</span><span class="fu"><a href="reference/xarray.html">xarray</a></span><span class="op">(</span><span class="op">)</span>, <span class="va">era</span>, engine <span class="op">=</span> <span class="st">"zarr"</span>,</span>
+<span>                 storage_options <span class="op">=</span> <span class="fu">reticulate</span><span class="fu">::</span><span class="fu"><a href="https://rstudio.github.io/reticulate/reference/dict.html" class="external-link">dict</a></span><span class="op">(</span>token <span class="op">=</span> <span class="st">"anon"</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="va">con</span></span>
 <span><span class="co">#&gt; &lt;XarrayConnection&gt;</span></span>
 <span><span class="co">#&gt;   dsn: gs://gcp-public-data-arco-era5/ar/full_37-1h-0p25deg-chunk-1.zarr-v3</span></span>
 <span><span class="co">#&gt;   dims: time: 1323648, latitude: 721, longitude: 1440, level: 37</span></span>
 <span><span class="co">#&gt;   vars: 100m_u_component_of_wind, 100m_v_component_of_wind, ... (273 total)</span></span>
-<span></span>
-<span><span class="co">## tables are all variables, coordinates included; data variables are</span></span>
-<span><span class="co">## the arrays proper (273 here, as the print above counts)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/utils/str.html" class="external-link">str</a></span><span class="op">(</span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbListTables.html" class="external-link">dbListTables</a></span><span class="op">(</span><span class="va">con</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt;  chr [1:277] "100m_u_component_of_wind" "100m_v_component_of_wind" ...</span></span>
-<span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbListFields.html" class="external-link">dbListFields</a></span><span class="op">(</span><span class="va">con</span>, <span class="st">"100m_u_component_of_wind"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] "time"                     "latitude"                </span></span>
-<span><span class="co">#&gt; [3] "longitude"                "100m_u_component_of_wind"</span></span>
-<span></span>
-<span><span class="co">## dataset attributes are one expression away</span></span>
-<span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbGetQuery.html" class="external-link">dbGetQuery</a></span><span class="op">(</span><span class="va">con</span>, <span class="st">"ds.attrs['valid_time_start']"</span><span class="op">)</span></span>
-<span><span class="co">#&gt;        value</span></span>
-<span><span class="co">#&gt; 1 1940-01-01</span></span></code></pre></div>
-<p>Label-based <code>slice</code> follows the order of the coordinate, and ERA5 latitude runs descending (90 down to -90). So this selects the empty interval and returns zero rows, with a hint:</p>
+<span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbListFields.html" class="external-link">dbListFields</a></span><span class="op">(</span><span class="va">con</span>, <span class="st">"2m_temperature"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; [1] "time"           "latitude"       "longitude"      "2m_temperature"</span></span></code></pre></div>
+<p>A statement is xarray’s own selection language. One value, near Hobart:</p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbGetQuery.html" class="external-link">dbGetQuery</a></span><span class="op">(</span><span class="va">con</span>,</span>
-<span>  <span class="st">"ds['100m_u_component_of_wind'].sel(latitude=slice(18, 19), longitude=slice(73, 74), time='1980-01-01')"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; xrdbi: 'latitude' selected nothing: this coordinate is DESCENDING (90.0 .. -90.0) and label slices follow coordinate order; try slice(hi, lo)</span></span>
-<span><span class="co">#&gt; [1] time                     latitude                 longitude               </span></span>
-<span><span class="co">#&gt; [4] 100m_u_component_of_wind</span></span>
-<span><span class="co">#&gt; &lt;0 rows&gt; (or 0-length row.names)</span></span></code></pre></div>
-<p>Inspect the coordinate (coordinates are tables too), then slice in its order:</p>
+<span>  <span class="st">"ds['2m_temperature'].sel(time='2020-01-01T00', latitude=-42.75, longitude=147.25)"</span><span class="op">)</span></span>
+<span><span class="co">#&gt;   latitude longitude       time 2m_temperature</span></span>
+<span><span class="co">#&gt; 1   -42.75    147.25 2020-01-01       290.9427</span></span></code></pre></div>
+<p>dplyr filters compile to a selection, oriented to each coordinate’s direction (latitude here runs north to south), and <code><a href="https://dplyr.tidyverse.org/reference/explain.html" class="external-link">show_query()</a></code> prints the statement:</p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbGetQuery.html" class="external-link">dbGetQuery</a></span><span class="op">(</span><span class="va">con</span>, <span class="st">"ds.latitude.isel(latitude=slice(0, 5))"</span><span class="op">)</span></span>
-<span><span class="co">#&gt;   latitude</span></span>
-<span><span class="co">#&gt; 1    90.00</span></span>
-<span><span class="co">#&gt; 2    89.75</span></span>
-<span><span class="co">#&gt; 3    89.50</span></span>
-<span><span class="co">#&gt; 4    89.25</span></span>
-<span><span class="co">#&gt; 5    89.00</span></span>
-<span></span>
-<span><span class="va">u</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://dbi.r-dbi.org/reference/dbGetQuery.html" class="external-link">dbGetQuery</a></span><span class="op">(</span><span class="va">con</span>,</span>
-<span>  <span class="st">"ds['100m_u_component_of_wind'].sel(latitude=slice(19, 18), longitude=slice(73, 74), time='1980-01-01')"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/dim.html" class="external-link">dim</a></span><span class="op">(</span><span class="va">u</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 600   4</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">u</span><span class="op">)</span></span>
-<span><span class="co">#&gt;         time latitude longitude 100m_u_component_of_wind</span></span>
-<span><span class="co">#&gt; 1 1980-01-01    19.00     73.00               -0.5576082</span></span>
-<span><span class="co">#&gt; 2 1980-01-01    19.00     73.25               -0.2125518</span></span>
-<span><span class="co">#&gt; 3 1980-01-01    19.00     73.50                0.8037959</span></span>
-<span><span class="co">#&gt; 4 1980-01-01    19.00     73.75                2.3964324</span></span>
-<span><span class="co">#&gt; 5 1980-01-01    19.00     74.00                3.7569399</span></span>
-<span><span class="co">#&gt; 6 1980-01-01    18.75     73.00               -0.2851481</span></span></code></pre></div>
-<p>Longitude here is 0..360 ascending, so <code>slice(73, 74)</code> is fine as-is. A quoted date string on <code>time</code> selects the whole day.</p>
-<p>Note on <code>chunks</code>: omitting it (Python <code>chunks=None</code> for <code>open_dataset</code>) gives lazily indexed backend arrays and a fast connection. Passing <code>chunks = reticulate::dict()</code> (Python <code>chunks={}</code>) wraps every variable in dask at native storage chunking; for finely-chunked stores this can cost minutes of task-graph construction at connect time (this ERA5 store is 1 timestep per chunk, times 273 data variables). Selection via <code>sel</code>/<code>isel</code> is lazy either way and reads only the chunks a slab touches, so prefer no dask for extraction, and opt in per statement for reductions, rechunking to something sane:</p>
-<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbGetQuery.html" class="external-link">dbGetQuery</a></span><span class="op">(</span><span class="va">con</span>,</span>
-<span>  <span class="st">"ds['2m_temperature'].chunk({'time': 744}).sel(latitude=slice(19, 18), longitude=slice(73, 74)).mean('time')"</span><span class="op">)</span></span></code></pre></div>
-<p>Beware that the default differs by open function: <code>open_dataset</code> defaults to <code>chunks=None</code> (no dask), <code>open_zarr</code> defaults to <code>chunks='auto'</code> (dask). If you connect with <code>open = "open_zarr"</code>, pass <code>chunks = reticulate::py_none()</code> explicitly to get the fast path.</p>
-</div>
-<div class="section level2">
-<h2 id="dplyr">dplyr<a class="anchor" aria-label="anchor" href="#dplyr"></a>
-</h2>
-<p><code>tbl(con, var)</code> is lazy: verbs accumulate, no data are read until <code><a href="https://dplyr.tidyverse.org/reference/compute.html" class="external-link">collect()</a></code> (or a print, which shows a small preview), and <code><a href="https://dplyr.tidyverse.org/reference/explain.html" class="external-link">show_query()</a></code> prints the one statement that will run. Filters on dimensions push down to <code>.sel()</code>, oriented to the coordinate’s direction, so the descending-latitude gotcha above dissolves. Strict bounds keep the inclusive <code>.sel()</code> range and trim its boundary with a boolean <code>.isel()</code>, so the statement stays an xarray selection:</p>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://dplyr.tidyverse.org" class="external-link">dplyr</a></span>, warn.conflicts <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">u10</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/tbl.html" class="external-link">tbl</a></span><span class="op">(</span><span class="va">con</span>, <span class="st">"100m_u_component_of_wind"</span><span class="op">)</span> <span class="op">|&gt;</span></span>
-<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/filter.html" class="external-link">filter</a></span><span class="op">(</span><span class="va">latitude</span> <span class="op">&gt;</span> <span class="fl">18</span>, <span class="va">latitude</span> <span class="op">&lt;</span> <span class="fl">19</span>, <span class="va">longitude</span> <span class="op">&gt;=</span> <span class="fl">73</span>, <span class="va">longitude</span> <span class="op">&lt;=</span> <span class="fl">74</span>,</span>
-<span>         <span class="va">time</span> <span class="op">&gt;=</span> <span class="fu"><a href="https://rdrr.io/r/base/as.POSIXlt.html" class="external-link">as.POSIXct</a></span><span class="op">(</span><span class="st">"1980-01-01"</span>, tz <span class="op">=</span> <span class="st">"UTC"</span><span class="op">)</span>,</span>
-<span>         <span class="va">time</span> <span class="op">&lt;</span> <span class="fu"><a href="https://rdrr.io/r/base/as.POSIXlt.html" class="external-link">as.POSIXct</a></span><span class="op">(</span><span class="st">"1980-01-02"</span>, tz <span class="op">=</span> <span class="st">"UTC"</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://dplyr.tidyverse.org/reference/explain.html" class="external-link">show_query</a></span><span class="op">(</span><span class="va">u10</span><span class="op">)</span></span>
-<span><span class="co">#&gt; ds['100m_u_component_of_wind'].sel(latitude=slice(19, 18), longitude=slice(73, 74), time=slice('1980-01-01T00:00:00', '1980-01-02T00:00:00')).pipe(lambda a: a.isel(latitude=(a.indexes['latitude'] &gt; 18) &amp; (a.indexes['latitude'] &lt; 19), time=(a.indexes['time'] &lt; '1980-01-02T00:00:00')))</span></span>
-<span><span class="fu"><a href="https://dplyr.tidyverse.org/reference/compute.html" class="external-link">collect</a></span><span class="op">(</span><span class="va">u10</span><span class="op">)</span></span>
-<span><span class="co">#&gt; # A tibble: 360 × 4</span></span>
-<span><span class="co">#&gt;    time                latitude longitude `100m_u_component_of_wind`</span></span>
-<span><span class="co">#&gt;    &lt;dttm&gt;                 &lt;dbl&gt;     &lt;dbl&gt;                      &lt;dbl&gt;</span></span>
-<span><span class="co">#&gt;  1 1980-01-01 00:00:00    18.75     73                     -0.28515 </span></span>
-<span><span class="co">#&gt;  2 1980-01-01 00:00:00    18.75     73.25                  -0.035991</span></span>
-<span><span class="co">#&gt;  3 1980-01-01 00:00:00    18.75     73.5                    1.0485  </span></span>
-<span><span class="co">#&gt;  4 1980-01-01 00:00:00    18.75     73.75                   2.7908  </span></span>
-<span><span class="co">#&gt;  5 1980-01-01 00:00:00    18.75     74                      3.9434  </span></span>
-<span><span class="co">#&gt;  6 1980-01-01 00:00:00    18.5      73                     -0.026132</span></span>
-<span><span class="co">#&gt;  7 1980-01-01 00:00:00    18.5      73.25                  -0.19911 </span></span>
-<span><span class="co">#&gt;  8 1980-01-01 00:00:00    18.5      73.5                    0.72313 </span></span>
-<span><span class="co">#&gt;  9 1980-01-01 00:00:00    18.5      73.75                   2.6671  </span></span>
-<span><span class="co">#&gt; 10 1980-01-01 00:00:00    18.5      74                      4.0419  </span></span>
-<span><span class="co">#&gt; # ℹ 350 more rows</span></span></code></pre></div>
-<p><code><a href="https://rdrr.io/r/utils/head.html" class="external-link">head()</a></code> and <code><a href="https://dplyr.tidyverse.org/reference/select.html" class="external-link">select()</a></code> apply in R to the fetched rows, and <code>head(n)</code> first narrows the selection to the leading block that holds those <code>n</code> rows, so a peek at a 1.3-million-step variable reads one chunk (the store’s time axis starts in 1900, its data in 1940). Printing a tbl shows the same kind of lazy preview:</p>
+<span><span class="va">tas</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/tbl.html" class="external-link">tbl</a></span><span class="op">(</span><span class="va">con</span>, <span class="st">"2m_temperature"</span><span class="op">)</span> <span class="op">|&gt;</span></span>
+<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/filter.html" class="external-link">filter</a></span><span class="op">(</span><span class="va">time</span> <span class="op">==</span> <span class="fu"><a href="https://rdrr.io/r/base/as.POSIXlt.html" class="external-link">as.POSIXct</a></span><span class="op">(</span><span class="st">"2020-01-01 00:00"</span>, tz <span class="op">=</span> <span class="st">"UTC"</span><span class="op">)</span>,</span>
+<span>         <span class="va">latitude</span> <span class="op">&gt;</span> <span class="op">-</span><span class="fl">43.5</span>, <span class="va">latitude</span> <span class="op">&lt;</span> <span class="op">-</span><span class="fl">42</span>, <span class="va">longitude</span> <span class="op">&gt;</span> <span class="fl">146.5</span>, <span class="va">longitude</span> <span class="op">&lt;</span> <span class="fl">148</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://dplyr.tidyverse.org/reference/explain.html" class="external-link">show_query</a></span><span class="op">(</span><span class="va">tas</span><span class="op">)</span></span>
+<span><span class="co">#&gt; ds['2m_temperature'].sel(latitude=slice(-42, -43.5), longitude=slice(146.5, 148), time='2020-01-01T00:00:00').pipe(lambda a: a.isel(latitude=(a['latitude'].to_index() &gt; -43.5) &amp; (a['latitude'].to_index() &lt; -42), longitude=(a['longitude'].to_index() &gt; 146.5) &amp; (a['longitude'].to_index() &lt; 148)))</span></span>
+<span><span class="fu"><a href="https://dplyr.tidyverse.org/reference/compute.html" class="external-link">collect</a></span><span class="op">(</span><span class="va">tas</span><span class="op">)</span></span>
+<span><span class="co">#&gt; # A tibble: 25 × 4</span></span>
+<span><span class="co">#&gt;    latitude longitude time                `2m_temperature`</span></span>
+<span><span class="co">#&gt;       &lt;dbl&gt;     &lt;dbl&gt; &lt;dttm&gt;                         &lt;dbl&gt;</span></span>
+<span><span class="co">#&gt;  1   -42.25    146.75 2020-01-01 00:00:00          287.470</span></span>
+<span><span class="co">#&gt;  2   -42.25    147    2020-01-01 00:00:00          288.478</span></span>
+<span><span class="co">#&gt;  3   -42.25    147.25 2020-01-01 00:00:00          290.044</span></span>
+<span><span class="co">#&gt;  4   -42.25    147.5  2020-01-01 00:00:00          291.181</span></span>
+<span><span class="co">#&gt;  5   -42.25    147.75 2020-01-01 00:00:00          292.700</span></span>
+<span><span class="co">#&gt;  6   -42.5     146.75 2020-01-01 00:00:00          287.864</span></span>
+<span><span class="co">#&gt;  7   -42.5     147    2020-01-01 00:00:00          289.038</span></span>
+<span><span class="co">#&gt;  8   -42.5     147.25 2020-01-01 00:00:00          290.086</span></span>
+<span><span class="co">#&gt;  9   -42.5     147.5  2020-01-01 00:00:00          291.287</span></span>
+<span><span class="co">#&gt; 10   -42.5     147.75 2020-01-01 00:00:00          292.118</span></span>
+<span><span class="co">#&gt; # ℹ 15 more rows</span></span></code></pre></div>
+<p>Every read is sized before it happens, and refused above a limit:</p>
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/try.html" class="external-link">try</a></span><span class="op">(</span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbReadTable.html" class="external-link">dbReadTable</a></span><span class="op">(</span><span class="va">con</span>, <span class="st">"2m_temperature"</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Error : materializing 1,374,264,299,520 cells exceeds the guard (10,000,000); subset first, raise options(xrdbi.max_cells=), or use force = TRUE</span></span></code></pre></div>
+<p>One hour of the whole globe is one stored chunk, and <code><a href="reference/xr_raster.html">xr_raster()</a></code> renders it as a raster with its georeferencing, ready for gdalraster:</p>
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">r</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/xr_raster.html">xr_raster</a></span><span class="op">(</span><span class="va">con</span>, <span class="st">"ds['2m_temperature'].sel(time='2020-01-01T00')"</span><span class="op">)</span></span>
+<span><span class="va">temps</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">x</span><span class="op">)</span> <span class="fu"><a href="https://rdrr.io/r/grDevices/rgb.html" class="external-link">rgb</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/grDevices/colorRamp.html" class="external-link">colorRamp</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/grDevices/palettes.html" class="external-link">hcl.colors</a></span><span class="op">(</span><span class="fl">11</span>, <span class="st">"Temps"</span><span class="op">)</span><span class="op">)</span><span class="op">(</span><span class="va">x</span><span class="op">)</span>, maxColorValue <span class="op">=</span> <span class="fl">255</span><span class="op">)</span></span>
+<span><span class="fu">gdalraster</span><span class="fu">::</span><span class="fu"><a href="https://firelab.github.io/gdalraster/reference/plot_raster.html" class="external-link">plot_raster</a></span><span class="op">(</span><span class="va">r</span>, col_map_fn <span class="op">=</span> <span class="va">temps</span>, legend <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>                        main <span class="op">=</span> <span class="st">"2 m temperature (K), 2020-01-01 00:00 UTC"</span><span class="op">)</span></span></code></pre></div>
+<p><img src="reference/figures/README-global-1.png" alt="Global 2 m air temperature from ERA5 at midnight UTC on 1 January 2020: coldest over Antarctica, Siberia and Greenland, hottest over summer Australia"></p>
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">t2m</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/tbl.html" class="external-link">tbl</a></span><span class="op">(</span><span class="va">con</span>, <span class="st">"2m_temperature"</span><span class="op">)</span> <span class="op">|&gt;</span></span>
-<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/filter.html" class="external-link">filter</a></span><span class="op">(</span><span class="va">time</span> <span class="op">&gt;=</span> <span class="fu"><a href="https://rdrr.io/r/base/as.POSIXlt.html" class="external-link">as.POSIXct</a></span><span class="op">(</span><span class="st">"1980-01-01"</span>, tz <span class="op">=</span> <span class="st">"UTC"</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="va">t2m</span> <span class="op">|&gt;</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/select.html" class="external-link">select</a></span><span class="op">(</span><span class="va">time</span>, <span class="va">latitude</span>, <span class="va">`2m_temperature`</span><span class="op">)</span> <span class="op">|&gt;</span> <span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="fl">3</span><span class="op">)</span> <span class="op">|&gt;</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/explain.html" class="external-link">show_query</a></span><span class="op">(</span><span class="op">)</span></span>
-<span><span class="co">#&gt; ds['2m_temperature'].sel(time=slice('1980-01-01T00:00:00', None)).isel(time=slice(0, 1), latitude=slice(0, 1), longitude=slice(0, 3)) </span></span>
-<span><span class="co">#&gt; # then in R: head(3) |&gt; select(time, latitude, `2m_temperature`)</span></span>
-<span><span class="va">t2m</span> <span class="op">|&gt;</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/select.html" class="external-link">select</a></span><span class="op">(</span><span class="va">time</span>, <span class="va">latitude</span>, <span class="va">`2m_temperature`</span><span class="op">)</span> <span class="op">|&gt;</span> <span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="fl">3</span><span class="op">)</span> <span class="op">|&gt;</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/compute.html" class="external-link">collect</a></span><span class="op">(</span><span class="op">)</span></span>
-<span><span class="co">#&gt; # A tibble: 3 × 3</span></span>
-<span><span class="co">#&gt;   time                latitude `2m_temperature`</span></span>
-<span><span class="co">#&gt;   &lt;dttm&gt;                 &lt;dbl&gt;            &lt;dbl&gt;</span></span>
-<span><span class="co">#&gt; 1 1980-01-01 00:00:00       90           247.92</span></span>
-<span><span class="co">#&gt; 2 1980-01-01 00:00:00       90           247.92</span></span>
-<span><span class="co">#&gt; 3 1980-01-01 00:00:00       90           247.92</span></span>
-<span></span>
-<span><span class="va">t2m</span> <span class="op">|&gt;</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/filter.html" class="external-link">filter</a></span><span class="op">(</span><span class="va">latitude</span> <span class="op">&lt;</span> <span class="fl">60</span><span class="op">)</span></span>
-<span><span class="co">#&gt; &lt;tbl_xarray&gt; 2m_temperature</span></span>
-<span><span class="co">#&gt;   python: ds['2m_temperature'].sel(latitude=slice(60, None), time=slice('1980-01-01T00:00:00', None)).pipe(lambda a: a.isel(latitude=(a.indexes['latitude'] &lt; 60)))</span></span>
-<span><span class="co">#&gt;   sizes : time: 622,392, latitude:     601, longitude:   1,440</span></span>
-<span><span class="co">#&gt; # A tibble: 6 × 4</span></span>
-<span><span class="co">#&gt;   time                latitude longitude `2m_temperature`</span></span>
-<span><span class="co">#&gt;   &lt;dttm&gt;                 &lt;dbl&gt;     &lt;dbl&gt;            &lt;dbl&gt;</span></span>
-<span><span class="co">#&gt; 1 1980-01-01 00:00:00    59.75      0              275.68</span></span>
-<span><span class="co">#&gt; 2 1980-01-01 00:00:00    59.75      0.25           275.84</span></span>
-<span><span class="co">#&gt; 3 1980-01-01 00:00:00    59.75      0.5            275.98</span></span>
-<span><span class="co">#&gt; 4 1980-01-01 00:00:00    59.75      0.75           275.96</span></span>
-<span><span class="co">#&gt; 5 1980-01-01 00:00:00    59.75      1              275.91</span></span>
-<span><span class="co">#&gt; 6 1980-01-01 00:00:00    59.75      1.25           275.89</span></span>
-<span><span class="co">#&gt; # lazy preview of the first cells (reads at most one chunk); collect() for the full result</span></span>
-<span></span>
-<span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbDisconnect.html" class="external-link">dbDisconnect</a></span><span class="op">(</span><span class="va">con</span><span class="op">)</span></span></code></pre></div>
-<p>Filters on data values (<code>filter(`2m_temperature` &gt; 300)</code>) need a pandas <code>.query()</code> after rendering, so <code><a href="https://rdrr.io/r/utils/head.html" class="external-link">head()</a></code> and <code><a href="https://dplyr.tidyverse.org/reference/select.html" class="external-link">select()</a></code> then run in pandas too; <code><a href="https://dplyr.tidyverse.org/reference/explain.html" class="external-link">show_query()</a></code> makes the split visible.</p>
+<code class="sourceCode R"><span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbDisconnect.html" class="external-link">dbDisconnect</a></span><span class="op">(</span><span class="va">con</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level2">
-<h2 id="example-oisst-daily-mosaic-via-gdal-multidim-vrt-gdalxarray-engine">Example: OISST daily mosaic via GDAL multidim VRT (gdalxarray engine)<a class="anchor" aria-label="anchor" href="#example-oisst-daily-mosaic-via-gdal-multidim-vrt-gdalxarray-engine"></a>
+<h2 id="learn-more">Learn more<a class="anchor" aria-label="anchor" href="#learn-more"></a>
 </h2>
-<p>Requires gdalxarray and the GDAL Python bindings (conda-forge <code>gdal</code>, or an image with GDAL; pip alone cannot provide them). The dsn is a GDAL multidim VRT mosaic over the full OISST daily record, published by a scheduled pipeline; xarray opens it through the gdalxarray backend, so every GDAL virtual filesystem and format is in reach of the same DBI surface.</p>
-<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">dsn</span> <span class="op">&lt;-</span> <span class="st">"/vsicurl/https://projects.pawsey.org.au/aad-index/oisst/oisst-mdim.vrt"</span></span>
-<span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/Sys.setenv.html" class="external-link">Sys.setenv</a></span><span class="op">(</span>AWS_NO_SIGN_REQUEST <span class="op">=</span> <span class="st">"YES"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/system.time.html" class="external-link">system.time</a></span><span class="op">(</span><span class="op">{</span></span>
-<span>  <span class="va">con</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://dbi.r-dbi.org/reference/dbConnect.html" class="external-link">dbConnect</a></span><span class="op">(</span><span class="fu"><a href="reference/xarray.html">xarray</a></span><span class="op">(</span><span class="op">)</span>, <span class="va">dsn</span>, engine <span class="op">=</span> <span class="st">"gdalxarray"</span><span class="op">)</span></span>
-<span><span class="op">}</span><span class="op">)</span></span>
-<span><span class="co">#&gt;    user  system elapsed </span></span>
-<span><span class="co">#&gt;   0.715   0.152   2.323</span></span>
-<span></span>
-<span><span class="va">con</span></span>
-<span><span class="co">#&gt; &lt;XarrayConnection&gt;</span></span>
-<span><span class="co">#&gt;   dsn: /vsicurl/https://projects.pawsey.org.au/aad-index/oisst/oisst-mdim.vrt</span></span>
-<span><span class="co">#&gt;   dims: time: 16492, zlev: 1, lat: 720, lon: 1440</span></span>
-<span><span class="co">#&gt;   vars: anom, err, ice, sst</span></span>
-<span></span>
-<span><span class="co">## the most recent day in the record (a 0-d scalar renders as one row)</span></span>
-<span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbGetQuery.html" class="external-link">dbGetQuery</a></span><span class="op">(</span><span class="va">con</span>, <span class="st">"ds.time.isel(time=-1)"</span><span class="op">)</span></span>
-<span><span class="co">#&gt;                  time</span></span>
-<span><span class="co">#&gt; 1 2026-10-26 12:00:00</span></span>
-<span></span>
-<span><span class="co">## one day of SST as tidy rows</span></span>
-<span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbGetQuery.html" class="external-link">dbGetQuery</a></span><span class="op">(</span><span class="va">con</span>, <span class="st">"ds.sst.isel(time=-1)"</span><span class="op">)</span> <span class="op">|&gt;</span> <span class="fu"><a href="https://rdrr.io/r/utils/str.html" class="external-link">str</a></span><span class="op">(</span><span class="op">)</span></span>
-<span><span class="co">#&gt; 'data.frame':    1036800 obs. of  5 variables:</span></span>
-<span><span class="co">#&gt;  $ zlev: num  0 0 0 0 0 0 0 0 0 0 ...</span></span>
-<span><span class="co">#&gt;  $ lat : num  -89.9 -89.9 -89.9 -89.9 -89.9 ...</span></span>
-<span><span class="co">#&gt;  $ lon : num  0.125 0.375 0.625 0.875 1.125 ...</span></span>
-<span><span class="co">#&gt;  $ time: POSIXct, format: "2026-10-26 12:00:00" "2026-10-26 12:00:00" ...</span></span>
-<span><span class="co">#&gt;  $ sst : num  NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN ...</span></span></code></pre></div>
-<p>Two lessons this dsn teaches:</p>
-<p>Laziness defers failure as well as work. The VRT itself is public over <code>/vsicurl</code>, but its sources are <code>/vsis3</code> paths into the NOAA bucket, so a missing <code>AWS_NO_SIGN_REQUEST</code> errors at the first query, not at connect (connect reads only the VRT metadata). GDAL reads configuration from the process environment at access time, so <code><a href="https://rdrr.io/r/base/Sys.setenv.html" class="external-link">Sys.setenv()</a></code> works even after the Python session is up; setting it before connecting is still the tidy habit.</p>
-<p>A connection is a snapshot. The pipeline behind this VRT publishes a new day on schedule (it did so mid-session while writing this example: a held connection kept answering with the previous day, a fresh connect saw the new one). The rolling <code>oisst-mdim.vrt</code> always means “latest”; pin a dated sibling (<code>oisst-mdim-YYYYMMDD.vrt</code>) when you need a reproducible record. Icechunk makes this distinction first-class: a readonly session at a snapshot is an AS OF query.</p>
+<p><a href="https://mdsumner.github.io/xrdbi/articles/xrdbi.html">Get started</a> works through connections, statements, parameters, dplyr and rasters on a small bundled file. Then:</p>
+<ul>
+<li>Querying: <a href="https://mdsumner.github.io/xrdbi/articles/dplyr.html">Querying with dplyr</a> (how each verb compiles, and what gets read), <a href="https://mdsumner.github.io/xrdbi/articles/parameters.html">Parameters</a> (R values into statements by name), <a href="https://mdsumner.github.io/xrdbi/articles/rendering.html">From arrays to rows</a> (the shape and types of results, and when work happens) and <a href="https://mdsumner.github.io/xrdbi/articles/data-sources.html">Data sources</a> (netCDF over HTTPS, many files, zarr on Google Cloud and S3, GDAL rasters and VRTs, icechunk)</li>
+<li>Grids and geometry: <a href="https://mdsumner.github.io/xrdbi/articles/rasters.html">Rasters</a>, <a href="https://mdsumner.github.io/xrdbi/articles/chunk-maps.html">Chunk maps</a> and <a href="https://mdsumner.github.io/xrdbi/articles/curvilinear.html">Curvilinear grids and vector cubes</a>
+</li>
+<li>
+<a href="https://mdsumner.github.io/xrdbi/articles/python-environments.html">Python environments</a> and the <a href="https://mdsumner.github.io/xrdbi/articles/design.html">Design notes</a>
+</li>
+</ul>
+<p>In R, <code><a href="reference/xrdbi-package.html">?xrdbi</a></code> is the overview: how xarray maps to DBI, the functions by task, and the options.</p>
 </div>
 <div class="section level2">
-<h2 id="chunk-maps">Chunk maps<a class="anchor" aria-label="anchor" href="#chunk-maps"></a>
-</h2>
-<p><code><a href="reference/xr_chunks.html">xr_chunks()</a></code> maps a variable’s storage chunks, or the chunks a selection touches, as a table: each chunk’s index range and coordinate extent along every dimension, how many of its cells the selection reads, and a rectangle over the two spatial dimensions with the CRS. Only coordinates are read. (The geometry column needs the R package wk.) Chunk shapes come from what the backend records (zarr, netCDF, GDAL blocks via gdalxarray); <code>level = "shards"</code> maps the shards of a sharded zarr v3 array, and curvilinear grids get the envelope of each chunk’s 2-D longitude/latitude.</p>
-<p>A Sentinel-2 true-colour Cloud-Optimized GeoTIFF, one 10980 x 10980 UTM tile in 1024 x 1024 blocks, through gdalxarray (so, like the VRT above, it needs the GDAL Python bindings):</p>
-<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">tci</span> <span class="op">&lt;-</span> <span class="st">"/vsicurl/https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/36/Q/WD/2020/7/S2A_36QWD_20200701_0_L2A/TCI.tif"</span></span>
-<span><span class="co">## multidim = FALSE opens it as a classic raster: one variable, band_data,</span></span>
-<span><span class="co">## over (band, y, x)</span></span>
-<span><span class="va">cog</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://dbi.r-dbi.org/reference/dbConnect.html" class="external-link">dbConnect</a></span><span class="op">(</span><span class="fu"><a href="reference/xarray.html">xarray</a></span><span class="op">(</span><span class="op">)</span>, <span class="va">tci</span>, engine <span class="op">=</span> <span class="st">"gdalxarray"</span>, multidim <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">blocks</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/xr_chunks.html">xr_chunks</a></span><span class="op">(</span><span class="va">cog</span>, <span class="st">"ds.band_data.isel(band=0)"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">blocks</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 121</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/table.html" class="external-link">table</a></span><span class="op">(</span><span class="va">blocks</span><span class="op">$</span><span class="va">cells</span><span class="op">)</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt;  547600  757760 1048576 </span></span>
-<span><span class="co">#&gt;       1      20     100</span></span>
-<span></span>
-<span><span class="co">## a window: which blocks does reading it touch, and how much of each?</span></span>
-<span><span class="va">win</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/xr_chunks.html">xr_chunks</a></span><span class="op">(</span><span class="va">cog</span>,</span>
-<span>  <span class="st">"ds.band_data.isel(band=0, y=slice(3000, 5500), x=slice(2500, 6000))"</span><span class="op">)</span></span>
-<span><span class="va">win</span><span class="op">[</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"y_chunk"</span>, <span class="st">"x_chunk"</span>, <span class="st">"y_start"</span>, <span class="st">"y_stop"</span>, <span class="st">"x_start"</span>, <span class="st">"x_stop"</span>,</span>
-<span>        <span class="st">"cells"</span>, <span class="st">"selected"</span><span class="op">)</span><span class="op">]</span> <span class="op">|&gt;</span> <span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="op">)</span></span>
-<span><span class="co">#&gt;   y_chunk x_chunk y_start y_stop x_start x_stop   cells selected</span></span>
-<span><span class="co">#&gt; 1       2       2    2048   3072    2048   3072 1048576    41184</span></span>
-<span><span class="co">#&gt; 2       2       3    2048   3072    3072   4096 1048576    73728</span></span>
-<span><span class="co">#&gt; 3       2       4    2048   3072    4096   5120 1048576    73728</span></span>
-<span><span class="co">#&gt; 4       2       5    2048   3072    5120   6144 1048576    63360</span></span>
-<span><span class="co">#&gt; 5       3       2    3072   4096    2048   3072 1048576   585728</span></span>
-<span><span class="co">#&gt; 6       3       3    3072   4096    3072   4096 1048576  1048576</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">win</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 16</span></span>
-<span><span class="co">## the share of the cells in the touched blocks that the window uses</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">win</span><span class="op">$</span><span class="va">selected</span><span class="op">)</span> <span class="op">/</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">win</span><span class="op">$</span><span class="va">cells</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 0.5215406</span></span></code></pre></div>
-<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">used</span> <span class="op">&lt;-</span> <span class="va">win</span><span class="op">$</span><span class="va">selected</span> <span class="op">/</span> <span class="va">win</span><span class="op">$</span><span class="va">cells</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">blocks</span><span class="op">$</span><span class="va">geometry</span>, border <span class="op">=</span> <span class="st">"grey60"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">win</span><span class="op">$</span><span class="va">geometry</span>, add <span class="op">=</span> <span class="cn">TRUE</span>, border <span class="op">=</span> <span class="st">"firebrick"</span>,</span>
-<span>     col <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/grDevices/rgb.html" class="external-link">rgb</a></span><span class="op">(</span><span class="fl">178</span>, <span class="fl">34</span>, <span class="fl">34</span>, alpha <span class="op">=</span> <span class="fl">255</span> <span class="op">*</span> <span class="op">(</span><span class="fl">0.15</span> <span class="op">+</span> <span class="fl">0.6</span> <span class="op">*</span> <span class="va">used</span><span class="op">)</span>,</span>
-<span>               maxColorValue <span class="op">=</span> <span class="fl">255</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
-<p><img src="reference/figures/README-chunk-map-1.png" alt="A Sentinel-2 tile's 11 by 11 grid of storage blocks, with the blocks a window touches shaded by the fraction of their cells the window reads"></p>
-<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbDisconnect.html" class="external-link">dbDisconnect</a></span><span class="op">(</span><span class="va">cog</span><span class="op">)</span></span></code></pre></div>
-<p>The touched blocks are shaded by how much of each the window uses: the interior blocks are read whole, the edge blocks partly.</p>
-</div>
-<div class="section level2">
-<h2 id="connect-forms">Connect forms<a class="anchor" aria-label="anchor" href="#connect-forms"></a>
-</h2>
-<p>Exactly one of <code>dsn</code>, <code>builder</code>, <code>object</code>.</p>
-<p>A string that xarray can open (as above), with the open function selectable via <code>open =</code> (“open_dataset” default, also “open_zarr”, “open_mfdataset”, “open_datatree”) and keyword arguments passed through.</p>
-<p>A builder function, for anything that takes more than one call (icechunk sessions, virtualizarr, combining sources):</p>
-<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">con</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://dbi.r-dbi.org/reference/dbConnect.html" class="external-link">dbConnect</a></span><span class="op">(</span><span class="fu"><a href="reference/xarray.html">xarray</a></span><span class="op">(</span><span class="op">)</span>, builder <span class="op">=</span> <span class="kw">function</span><span class="op">(</span><span class="va">xr</span><span class="op">)</span> <span class="op">{</span></span>
-<span>  <span class="va">ic</span> <span class="op">&lt;-</span> <span class="fu">reticulate</span><span class="fu">::</span><span class="fu"><a href="https://rstudio.github.io/reticulate/reference/import.html" class="external-link">import</a></span><span class="op">(</span><span class="st">"icechunk"</span>, convert <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
-<span>  <span class="va">repo</span> <span class="op">&lt;-</span> <span class="va">ic</span><span class="op">$</span><span class="va">Repository</span><span class="op">$</span><span class="fu">open</span><span class="op">(</span><span class="va">ic</span><span class="op">$</span><span class="fu">s3_storage</span><span class="op">(</span></span>
-<span>            bucket <span class="op">=</span> <span class="st">"aad-index"</span>, prefix <span class="op">=</span> <span class="st">"rema-v2"</span>,</span>
-<span>            region <span class="op">=</span> <span class="st">"ap-southeast-2"</span>, anonymous <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span><span class="op">)</span></span>
-<span>  <span class="va">session</span> <span class="op">&lt;-</span> <span class="va">repo</span><span class="op">$</span><span class="fu">readonly_session</span><span class="op">(</span><span class="st">"main"</span><span class="op">)</span></span>
-<span>  <span class="va">xr</span><span class="op">$</span><span class="fu">open_zarr</span><span class="op">(</span><span class="va">session</span><span class="op">$</span><span class="va">store</span>, consolidated <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
-<span><span class="op">}</span><span class="op">)</span></span></code></pre></div>
-<p>Adopt an object already built in the session:</p>
-<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu">reticulate</span><span class="fu">::</span><span class="fu"><a href="https://rstudio.github.io/reticulate/reference/py_run.html" class="external-link">py_run_string</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste</a></span><span class="op">(</span></span>
-<span>  <span class="st">"import xarray, numpy"</span>,</span>
-<span>  <span class="st">"myds = xarray.Dataset({'v': (('y', 'x'), numpy.arange(6.).reshape(2, 3))},"</span>,</span>
-<span>  <span class="st">"                      coords={'y': [10, 20], 'x': [1, 2, 3]})"</span>,</span>
-<span>  sep <span class="op">=</span> <span class="st">"\n"</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="va">obj</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://dbi.r-dbi.org/reference/dbConnect.html" class="external-link">dbConnect</a></span><span class="op">(</span><span class="fu"><a href="reference/xarray.html">xarray</a></span><span class="op">(</span><span class="op">)</span>, object <span class="op">=</span> <span class="fu">reticulate</span><span class="fu">::</span><span class="fu"><a href="https://rstudio.github.io/reticulate/reference/py_eval.html" class="external-link">py_eval</a></span><span class="op">(</span><span class="st">"myds"</span>, convert <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbGetQuery.html" class="external-link">dbGetQuery</a></span><span class="op">(</span><span class="va">obj</span>, <span class="st">"ds"</span><span class="op">)</span></span>
-<span><span class="co">#&gt;    y x v</span></span>
-<span><span class="co">#&gt; 1 10 1 0</span></span>
-<span><span class="co">#&gt; 2 10 2 1</span></span>
-<span><span class="co">#&gt; 3 10 3 2</span></span>
-<span><span class="co">#&gt; 4 20 1 3</span></span>
-<span><span class="co">#&gt; 5 20 2 4</span></span>
-<span><span class="co">#&gt; 6 20 3 5</span></span>
-<span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbDisconnect.html" class="external-link">dbDisconnect</a></span><span class="op">(</span><span class="va">obj</span><span class="op">)</span></span></code></pre></div>
-</div>
-<div class="section level2">
-<h2 id="verbs-and-semantics">Verbs and semantics<a class="anchor" aria-label="anchor" href="#verbs-and-semantics"></a>
-</h2>
-<p>Continuing with the OISST VRT connection:</p>
-<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="co">## structured spec compiles to the same python string (inspect it, log it)</span></span>
-<span><span class="va">q</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/xr_query.html">xr_query</a></span><span class="op">(</span>vars <span class="op">=</span> <span class="st">"sst"</span>,</span>
-<span>              sel  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>lat <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="op">-</span><span class="fl">56</span>, <span class="op">-</span><span class="fl">55</span><span class="op">)</span>, lon <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">100</span>, <span class="fl">101</span><span class="op">)</span><span class="op">)</span>,</span>
-<span>              isel <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>time <span class="op">=</span> <span class="fl">0</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="va">q</span></span>
-<span><span class="co">#&gt; [1] "ds['sst'].sel(lat=slice(-56, -55), lon=slice(100, 101)).isel(time=0)"</span></span>
-<span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbGetQuery.html" class="external-link">dbGetQuery</a></span><span class="op">(</span><span class="va">con</span>, <span class="va">q</span><span class="op">)</span> <span class="op">|&gt;</span> <span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="fl">3</span><span class="op">)</span></span>
-<span><span class="co">#&gt;   zlev     lat     lon                time   sst</span></span>
-<span><span class="co">#&gt; 1    0 -55.875 100.125 1981-09-01 12:00:00 -0.06</span></span>
-<span><span class="co">#&gt; 2    0 -55.875 100.375 1981-09-01 12:00:00 -0.14</span></span>
-<span><span class="co">#&gt; 3    0 -55.875 100.625 1981-09-01 12:00:00 -0.17</span></span>
-<span></span>
-<span><span class="co">## lazy send, paginated fetch</span></span>
-<span><span class="va">res</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://dbi.r-dbi.org/reference/dbSendQuery.html" class="external-link">dbSendQuery</a></span><span class="op">(</span><span class="va">con</span>, <span class="st">"ds.sst.isel(time=0)"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbFetch.html" class="external-link">dbFetch</a></span><span class="op">(</span><span class="va">res</span>, n <span class="op">=</span> <span class="fl">3</span><span class="op">)</span></span>
-<span><span class="co">#&gt;   zlev     lat   lon                time sst</span></span>
-<span><span class="co">#&gt; 1    0 -89.875 0.125 1981-09-01 12:00:00 NaN</span></span>
-<span><span class="co">#&gt; 2    0 -89.875 0.375 1981-09-01 12:00:00 NaN</span></span>
-<span><span class="co">#&gt; 3    0 -89.875 0.625 1981-09-01 12:00:00 NaN</span></span>
-<span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbFetch.html" class="external-link">dbFetch</a></span><span class="op">(</span><span class="va">res</span>, n <span class="op">=</span> <span class="fl">3</span><span class="op">)</span></span>
-<span><span class="co">#&gt;   zlev     lat   lon                time sst</span></span>
-<span><span class="co">#&gt; 1    0 -89.875 0.875 1981-09-01 12:00:00 NaN</span></span>
-<span><span class="co">#&gt; 2    0 -89.875 1.125 1981-09-01 12:00:00 NaN</span></span>
-<span><span class="co">#&gt; 3    0 -89.875 1.375 1981-09-01 12:00:00 NaN</span></span>
-<span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbClearResult.html" class="external-link">dbClearResult</a></span><span class="op">(</span><span class="va">res</span><span class="op">)</span></span>
-<span></span>
-<span><span class="co">## whole-variable reads are guarded against accidental terabyte renderings;</span></span>
-<span><span class="co">## move the line with options(xrdbi.max_cells = ), or pass force = TRUE</span></span>
-<span><span class="kw"><a href="https://rdrr.io/r/base/try.html" class="external-link">try</a></span><span class="op">(</span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbReadTable.html" class="external-link">dbReadTable</a></span><span class="op">(</span><span class="va">con</span>, <span class="st">"sst"</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Error : materializing 17,098,905,600 cells exceeds the guard (10,000,000); subset first, raise options(xrdbi.max_cells=), or use force = TRUE</span></span>
-<span></span>
-<span><span class="co">## drop down whenever the veneer is in the way</span></span>
-<span><span class="va">ds</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/xr_dataset.html">xr_dataset</a></span><span class="op">(</span><span class="va">con</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/utils/str.html" class="external-link">str</a></span><span class="op">(</span><span class="fu">reticulate</span><span class="fu">::</span><span class="fu"><a href="https://rstudio.github.io/reticulate/reference/r-py-conversion.html" class="external-link">py_to_r</a></span><span class="op">(</span><span class="va">ds</span><span class="op">$</span><span class="va">sst</span><span class="op">$</span><span class="va">attrs</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt; List of 3</span></span>
-<span><span class="co">#&gt;  $ long_name: chr "Daily sea surface temperature"</span></span>
-<span><span class="co">#&gt;  $ valid_max: int 4500</span></span>
-<span><span class="co">#&gt;  $ valid_min: int -300</span></span></code></pre></div>
-<p>A result renders as the tidy long form, exactly as xarray’s <code>to_dataframe().reset_index()</code> would give it: one row per cell, every coordinate as a column (including scalars like <code>zlev</code> and N-D coordinates, broadcast), in C order over the dimensions. xrdbi builds it in R: only the values cross from Python, and the coordinate columns are repeated with <code><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep()</a></code>, so ten million rows arrive in about half a second and <code>dbFetch(n = )</code> builds only the rows asked for. Types arrive as R types: datetimes as POSIXct tagged UTC (or their own zone, if they have one), timedeltas as <code>difftime</code>, strings, bytes and non-standard calendar dates (cftime) as character, categoricals as factors, and geometry (the geometry coordinate of an xvec vector data cube) as <code><a href="https://paleolimbot.github.io/wk/reference/wkb.html" class="external-link">wk::wkb</a></code> carrying its CRS. Missing times and nullable integers arrive as <code>NA</code>; floating point gaps stay <code>NaN</code>. A coordinate renders as a single column of its values; a 0-d result as one row, a data variable with its scalar coordinates. The array is a rendering format; so is the data frame.</p>
-<p>Note <code>isel</code> in <code><a href="reference/xr_query.html">xr_query()</a></code> uses zero-based Python indices: the function interpolates values into Python source and does not translate. The compiled expression is the contract.</p>
-<p><code>dbBegin</code>/<code>dbCommit</code>/<code>dbRollback</code> error for now; the intended mapping is icechunk sessions and commits (a readonly session at a snapshot is literally an AS OF query).</p>
-</div>
-<div class="section level2">
-<h2 id="not-yet">Not yet<a class="anchor" aria-label="anchor" href="#not-yet"></a>
+<h2 id="related">Related<a class="anchor" aria-label="anchor" href="#related"></a>
 </h2>
 <ul>
 <li>
-<code><a href="https://dplyr.tidyverse.org/reference/summarise.html" class="external-link">summarise()</a></code> to xarray reductions in the dplyr layer</li>
-<li>chunk-aligned streaming fetch: <code>dbFetch(n = )</code> builds only the rows asked for, but the values of the whole selection are read at the first fetch</li>
-<li>DataTree groups as schemas (open = “open_datatree” already connects, but the table listing assumes a flat Dataset)</li>
-<li>write support (dbWriteTable as to_zarr / icechunk commit)</li>
-<li>registry integration: <code>dbConnect(xarray(), sds::dsn("oisst"))</code> where the registry row carries the open function and kwargs</li>
-<li>a coords on/off toggle for renderings (n-D coordinates broadcast into every row of a data variable, which is faithful but can be heavy)</li>
+<a href="https://github.com/mdsumner/gdal-r-python/blob/main/dbi-xarray/dbi-for-xarray.md" class="external-link">DBI for xarray</a>, the design note, which also sketches the chunk-level relation of an array store: chunk keys, byte ranges and encoded blobs</li>
+<li>
+<a href="https://github.com/hypertidy/storecard" class="external-link">storecard</a>, metadata-only descriptions of array stores</li>
+<li>
+<a href="https://hypertidy.github.io/regular-in-what/" class="external-link"><em>Regular in what?</em></a>, on grids, frames and the curvilinear confusion</li>
 </ul>
 </div>
 </div>

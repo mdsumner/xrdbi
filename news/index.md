@@ -60,6 +60,17 @@
   [`?xrdbi`](https://mdsumner.github.io/xrdbi/reference/xrdbi-package.md)
   link to them.
 
+- The README is now a landing page: what xrdbi is, installation, one
+  live example on ERA5 (a value, a dplyr filter, the guard, and a global
+  hour rendered with
+  [`xr_raster()`](https://mdsumner.github.io/xrdbi/reference/xr_raster.md)),
+  and links to the articles. Its tutorial sections moved to the
+  articles. `tools/build-readme.sh` knits it live in the gdal-r-python
+  image. “Data sources” now opens a real icechunk repository (BRAN daily
+  salinity on Source Cooperative, a virtual store over NCI THREDDS) in
+  place of placeholder names, replacing the README’s icechunk example,
+  whose repository no longer exists.
+
 ### Chunk maps
 
 - New
