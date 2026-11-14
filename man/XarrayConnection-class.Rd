@@ -96,11 +96,13 @@ commits.
 
 \examples{
 \dontrun{
-## needs a Python environment with xarray (and here h5netcdf)
-con <- dbConnect(xarray(), "oisst.nc", engine = "h5netcdf")
+## needs a Python environment with xarray (see ?xrdbi)
+f <- system.file("extdata/autotest/trmm.nc", package = "xrdbi")
+con <- dbConnect(xarray(), f)
 con
-dbListTables(con)
-dbListFields(con, "sst")
+dbListTables(con)       # every variable, coordinates included
+dbGetInfo(con)$tables   # the data variables
+dbListFields(con, "pcp")
 dbGetInfo(con)$sizes
 dbDisconnect(con)
 }

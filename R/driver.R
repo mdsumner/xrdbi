@@ -17,8 +17,14 @@
 #' drv
 #' dbDataType(drv, Sys.Date())
 #' \dontrun{
-#' ## needs a Python environment with xarray (and here zarr)
-#' con <- dbConnect(drv, "https://example.com/oisst.zarr", open = "open_zarr")
+#' ## needs a Python environment with xarray (see ?xrdbi)
+#' f <- system.file("extdata/autotest/trmm.nc", package = "xrdbi")
+#' con <- dbConnect(drv, f)
+#'
+#' ## open_zarr defaults to dask; chunks = None keeps the fast lazy path
+#' reticulate::py_require("zarr")
+#' con <- dbConnect(drv, "path/or/url.zarr", open = "open_zarr",
+#'                  chunks = reticulate::py_none())
 #' }
 xarray <- function() {
   new("XarrayDriver")
@@ -52,9 +58,14 @@ setMethod("dbDataType", "XarrayDriver", function(dbObj, obj, ...) {
 #'
 #' * `dsn`: a string that xarray can open. Passed to `xr.<open>(dsn, ...)`
 #'   where `open` is `"open_dataset"` by default (also useful:
-#'   `"open_zarr"`, `"open_mfdataset"`, `"open_datatree"`). Extra named
-#'   arguments in `...` are passed through as Python keyword arguments,
-#'   e.g. `engine = "rasterio"`, `chunks = list()`, `decode_times = TRUE`.
+#'   `"open_zarr"`, which defaults to dask, so pass
+#'   `chunks = reticulate::py_none()` for the lazy path; `"open_mfdataset"`,
+#'   which needs dask, `reticulate::py_require("dask")`; and
+#'   `"open_datatree"`). Extra named arguments in `...` are passed
+#'   through as Python keyword arguments, e.g. `engine = "h5netcdf"`,
+#'   `decode_times = TRUE`, or `chunks = reticulate::dict()` (Python
+#'   `chunks={}`: dask at the storage chunking; an R `list()` would
+#'   become a Python list).
 #' * `builder`: an R function of one argument (the xarray module, not
 #'   converted) returning a Dataset. Use this when construction needs more
 #'   than a single open call, e.g. virtualizarr or icechunk session setup.
@@ -62,8 +73,9 @@ setMethod("dbDataType", "XarrayDriver", function(dbObj, obj, ...) {
 #'   adopted as-is. Handy when the object was built interactively with
 #'   `reticulate::py_run_string()` or in a repl.
 #'
-#' The connection holds a reference to the Python object; nothing is
-#' computed or converted until a result is fetched.
+#' The connection holds a reference to the Python object. Opening reads
+#' metadata; data are read when a result is fetched (see
+#' [XarrayResult-class] for statements that compute).
 #'
 #' @param drv result of [xarray()]
 #' @param dsn character string openable by xarray
@@ -74,12 +86,21 @@ setMethod("dbDataType", "XarrayDriver", function(dbObj, obj, ...) {
 #' @return an [XarrayConnection][XarrayConnection-class]
 #' @examples
 #' \dontrun{
-#' ## needs a Python environment with xarray and the engine named
-#' con <- dbConnect(xarray(), "oisst.nc", engine = "h5netcdf")
+#' ## needs a Python environment with xarray (see ?xrdbi)
+#' f <- system.file("extdata/autotest/trmm.nc", package = "xrdbi")
+#' con <- dbConnect(xarray(), f)
 #'
 #' ## anything that takes more than one call
 #' con <- dbConnect(xarray(), builder = function(xr) {
-#'   xr$open_mfdataset(c("a.nc", "b.nc"), engine = "h5netcdf")
+#'   xr$open_dataset(f)$rename(list(pcp = "precip"))
+#' })
+#' dbListTables(con)
+#'
+#' ## many files as one dataset (open_mfdataset needs dask)
+#' reticulate::py_require("dask")
+#' files <- c(f, f)  # e.g. a daily series of files on one grid
+#' con <- dbConnect(xarray(), builder = function(xr) {
+#'   xr$open_mfdataset(files, combine = "nested", concat_dim = "run")
 #' })
 #'
 #' ## an object already built in the session

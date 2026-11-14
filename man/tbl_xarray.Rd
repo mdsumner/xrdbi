@@ -10,7 +10,7 @@
 \arguments{
 \item{src}{an XarrayConnection}
 
-\item{from}{a data variable name}
+\item{from}{a variable name (a data variable, or a coordinate)}
 
 \item{...}{unused}
 }
@@ -18,17 +18,31 @@
 a lazy \code{tbl_xarray}; \code{\link[dplyr:collect]{dplyr::collect()}} returns a tibble
 }
 \description{
-\code{tbl(con, name)} returns a lazy object in the dtplyr/duckplyr mould:
-dplyr verbs accumulate a spec, nothing touches Python until
-\code{\link[dplyr:collect]{dplyr::collect()}}. The spec compiles to a single Python statement
-(inspect it with \code{\link[dplyr:show_query]{dplyr::show_query()}}), executed through
-\code{\link[DBI:dbGetQuery]{DBI::dbGetQuery()}} like any other statement.
+\code{tbl(con, from)} returns a lazy table over one variable: dplyr verbs
+accumulate, and no data are read until \code{\link[dplyr:collect]{dplyr::collect()}} (or a
+print, which shows a small preview). The verbs compile to a single
+Python statement, shown by \code{\link[dplyr:show_query]{dplyr::show_query()}} and run through
+\code{\link[DBI:dbGetQuery]{DBI::dbGetQuery()}} like any other statement. Building it checks
+field names and probes coordinates, which needs Python, but reads no
+data.
 }
 \details{
-Predicate handling is pushdown-with-residuals:
+Supported verbs: \code{filter()}, \code{select()} (plain column names),
+\code{head()}, \code{collect()}, \code{show_query()}, and \code{as.data.frame()}.
+\code{filter()} takes \code{==}, \code{\%in\%}, \code{<}, \code{<=}, \code{>}, \code{>=}, \code{between()} and
+\code{&} (or several arguments), each comparing a field with a value;
+there is no \code{|}, \code{!} or \code{!=}. \code{collect()} is guarded like
+\code{\link[DBI:dbFetch]{DBI::dbFetch()}}: above \code{getOption("xrdbi.max_cells", 1e7)} cells
+read it errors unless \code{collect(force = TRUE)}. Printing shows the
+first \code{getOption("xrdbi.print_n", 6)} rows, reading at most one chunk;
+\code{options(xrdbi.print_preview = FALSE)} turns the preview off.
+
+Filters are pushed into xarray where they can be, and the rest
+applied after (the "residual"):
 \itemize{
-\item dimension-coordinate predicates compile to an inclusive \code{.sel()}
-hull, so only the chunks the slab touches are read
+\item a filter on a dimension (\code{==}, \code{\%in\%}, or a range) compiles to an
+inclusive \code{.sel()}, so only the part of the array it selects (its
+"hull") is read; \code{\%in\%} is an exact \verb{.sel([...])}
 \item strict inequalities on a dimension use the inclusive hull, then a
 boolean \code{.isel()} on that dimension's index trims the boundary, so
 the result is still an xarray object
@@ -65,6 +79,9 @@ u <- tbl(con, "100m_u_component_of_wind") |>
          time < as.POSIXct("1980-01-02", tz = "UTC"))
 show_query(u)
 collect(u)
-tbl(con, "2m_temperature") |> head(3) |> collect()
+## the store's time axis starts in 1900, its data in 1940
+tbl(con, "2m_temperature") |>
+  filter(time >= as.POSIXct("1980-01-01", tz = "UTC")) |>
+  head(3) |> collect()
 }
 }

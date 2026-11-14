@@ -6,10 +6,15 @@
 #' it, log it, put it in a registry row.
 #'
 #' Rules for `sel` and `isel` values:
-#' * a length-2 vector becomes a Python `slice(a, b)` (a range on that
-#'   dimension; for `sel` this is label-based and inclusive per xarray)
+#' * a length-2 numeric, `Date` or `POSIXct` vector becomes a Python
+#'   `slice(a, b)` (a range on that dimension; for `sel` this is
+#'   label-based and inclusive per xarray)
 #' * a length-1 value is a scalar selection (drops the dimension)
-#' * longer vectors become Python lists (fancy indexing)
+#' * character vectors, even of length 2, and longer vectors become
+#'   Python lists: exact labels (`sel = list(station = c("A01", "B02"))`)
+#'   or positions. For a time range give `Date` or `POSIXct`, not strings
+#' * a `POSIXct` is written as its instant in UTC, as xarray stores
+#'   times
 #'
 #' NOTE `isel` uses zero-based Python indices, faithfully: this function
 #' interpolates values into Python source and does not translate them.

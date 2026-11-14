@@ -22,10 +22,11 @@ is one step away.
 }
 \examples{
 \dontrun{
-## needs a Python environment with xarray (and here h5netcdf)
-con <- dbConnect(xarray(), "oisst.nc", engine = "h5netcdf")
+## needs a Python environment with xarray (see ?xrdbi)
+f <- system.file("extdata/autotest/trmm.nc", package = "xrdbi")
+con <- dbConnect(xarray(), f)
 ds <- xr_dataset(con)
-ds$sst$encoding
+ds$pcp$encoding
 xr_module(con)$`__version__`
 }
 }

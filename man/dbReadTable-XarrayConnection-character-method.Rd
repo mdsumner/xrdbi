@@ -35,9 +35,12 @@ Set \code{options(xrdbi.max_cells = )} to taste.
 }
 \examples{
 \dontrun{
-## needs a Python environment with xarray (and here h5netcdf)
-con <- dbConnect(xarray(), "oisst.nc", engine = "h5netcdf")
-dbReadTable(con, "lat")
-dbReadTable(con, "sst", max_cells = 2e6)
+## needs a Python environment with xarray (see ?xrdbi)
+f <- system.file("extdata/autotest/trmm.nc", package = "xrdbi")
+con <- dbConnect(xarray(), f)
+dbReadTable(con, "latitude")
+head(dbReadTable(con, "pcp"))
+## the guard: 1600 cells is over a limit of 100
+try(dbReadTable(con, "pcp", max_cells = 100))
 }
 }

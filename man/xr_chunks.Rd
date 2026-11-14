@@ -59,9 +59,10 @@ the shapes came from: \code{"storage"}, \code{"shards"}, \code{"dask"} or \code{
 The block structure of a stored variable as a table: one row per
 storage chunk that the selection touches, with each chunk's index
 range and coordinate extent along every dimension, and a rectangle
-over the two spatial dimensions. Run it on the whole variable
-(\code{"ds.sst"}) to see its chunk grid, or on a selection
-(\code{"ds.sst.sel(lat=slice(-60, -50))"}) to see which chunks reading it
+over the last two dimensions (y and x, as for \code{\link[=xr_raster]{xr_raster()}}). Run it
+on the whole variable (\code{"ds.sst"}) to see its chunk grid, or on a
+selection (\code{"ds.sst.sel(lat=slice(-60, -50))"}) to see which chunks
+reading it
 would touch.
 }
 \details{
@@ -86,10 +87,13 @@ ch <- xr_chunks(con,
   "ds['2m_temperature'].sel(time=slice('1980-01-01', '1980-01-31'))")
 nrow(ch)
 
-## a tiled GeoTIFF's block grid, plotted
-con <- dbConnect(xarray(), "tiled.tif", engine = "gdalxarray",
-                 multidim = FALSE)
+## a GeoTIFF's block grid (gdalxarray needs the GDAL Python bindings;
+## multidim = FALSE opens it as a classic raster: one variable,
+## band_data, over (band, y, x))
+tif <- system.file("extdata/autotest/rgbsmall.tif", package = "xrdbi")
+con <- dbConnect(xarray(), tif, engine = "gdalxarray", multidim = FALSE)
 ch <- xr_chunks(con, "ds.band_data")
+ch[, c("band_chunk", "y_start", "y_stop", "x_start", "x_stop", "cells")]
 plot(ch$geometry)
 }
 }

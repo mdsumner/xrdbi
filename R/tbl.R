@@ -1,14 +1,28 @@
 #' A lazy dplyr table over an xarray variable
 #'
-#' `tbl(con, name)` returns a lazy object in the dtplyr/duckplyr mould:
-#' dplyr verbs accumulate a spec, nothing touches Python until
-#' [dplyr::collect()]. The spec compiles to a single Python statement
-#' (inspect it with [dplyr::show_query()]), executed through
-#' [DBI::dbGetQuery()] like any other statement.
+#' `tbl(con, from)` returns a lazy table over one variable: dplyr verbs
+#' accumulate, and no data are read until [dplyr::collect()] (or a
+#' print, which shows a small preview). The verbs compile to a single
+#' Python statement, shown by [dplyr::show_query()] and run through
+#' [DBI::dbGetQuery()] like any other statement. Building it checks
+#' field names and probes coordinates, which needs Python, but reads no
+#' data.
 #'
-#' Predicate handling is pushdown-with-residuals:
-#' * dimension-coordinate predicates compile to an inclusive `.sel()`
-#'   hull, so only the chunks the slab touches are read
+#' Supported verbs: `filter()`, `select()` (plain column names),
+#' `head()`, `collect()`, `show_query()`, and `as.data.frame()`.
+#' `filter()` takes `==`, `%in%`, `<`, `<=`, `>`, `>=`, `between()` and
+#' `&` (or several arguments), each comparing a field with a value;
+#' there is no `|`, `!` or `!=`. `collect()` is guarded like
+#' [DBI::dbFetch()]: above `getOption("xrdbi.max_cells", 1e7)` cells
+#' read it errors unless `collect(force = TRUE)`. Printing shows the
+#' first `getOption("xrdbi.print_n", 6)` rows, reading at most one chunk;
+#' `options(xrdbi.print_preview = FALSE)` turns the preview off.
+#'
+#' Filters are pushed into xarray where they can be, and the rest
+#' applied after (the "residual"):
+#' * a filter on a dimension (`==`, `%in%`, or a range) compiles to an
+#'   inclusive `.sel()`, so only the part of the array it selects (its
+#'   "hull") is read; `%in%` is an exact `.sel([...])`
 #' * strict inequalities on a dimension use the inclusive hull, then a
 #'   boolean `.isel()` on that dimension's index trims the boundary, so
 #'   the result is still an xarray object
@@ -33,7 +47,7 @@
 #'   coordinates
 #'
 #' @param src an XarrayConnection
-#' @param from a data variable name
+#' @param from a variable name (a data variable, or a coordinate)
 #' @param ... unused
 #' @return a lazy `tbl_xarray`; [dplyr::collect()] returns a tibble
 #' @examples
@@ -49,7 +63,10 @@
 #'          time < as.POSIXct("1980-01-02", tz = "UTC"))
 #' show_query(u)
 #' collect(u)
-#' tbl(con, "2m_temperature") |> head(3) |> collect()
+#' ## the store's time axis starts in 1900, its data in 1940
+#' tbl(con, "2m_temperature") |>
+#'   filter(time >= as.POSIXct("1980-01-01", tz = "UTC")) |>
+#'   head(3) |> collect()
 #' }
 #' @name tbl_xarray
 NULL

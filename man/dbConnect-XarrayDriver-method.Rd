@@ -36,9 +36,14 @@ Exactly one of \code{dsn}, \code{builder}, \code{object} must be supplied.
 \itemize{
 \item \code{dsn}: a string that xarray can open. Passed to \verb{xr.<open>(dsn, ...)}
 where \code{open} is \code{"open_dataset"} by default (also useful:
-\code{"open_zarr"}, \code{"open_mfdataset"}, \code{"open_datatree"}). Extra named
-arguments in \code{...} are passed through as Python keyword arguments,
-e.g. \code{engine = "rasterio"}, \code{chunks = list()}, \code{decode_times = TRUE}.
+\code{"open_zarr"}, which defaults to dask, so pass
+\code{chunks = reticulate::py_none()} for the lazy path; \code{"open_mfdataset"},
+which needs dask, \code{reticulate::py_require("dask")}; and
+\code{"open_datatree"}). Extra named arguments in \code{...} are passed
+through as Python keyword arguments, e.g. \code{engine = "h5netcdf"},
+\code{decode_times = TRUE}, or \code{chunks = reticulate::dict()} (Python
+\code{chunks={}}: dask at the storage chunking; an R \code{list()} would
+become a Python list).
 \item \code{builder}: an R function of one argument (the xarray module, not
 converted) returning a Dataset. Use this when construction needs more
 than a single open call, e.g. virtualizarr or icechunk session setup.
@@ -47,17 +52,27 @@ adopted as-is. Handy when the object was built interactively with
 \code{reticulate::py_run_string()} or in a repl.
 }
 
-The connection holds a reference to the Python object; nothing is
-computed or converted until a result is fetched.
+The connection holds a reference to the Python object. Opening reads
+metadata; data are read when a result is fetched (see
+\link[=XarrayResult-class]{XarrayResult} for statements that compute).
 }
 \examples{
 \dontrun{
-## needs a Python environment with xarray and the engine named
-con <- dbConnect(xarray(), "oisst.nc", engine = "h5netcdf")
+## needs a Python environment with xarray (see ?xrdbi)
+f <- system.file("extdata/autotest/trmm.nc", package = "xrdbi")
+con <- dbConnect(xarray(), f)
 
 ## anything that takes more than one call
 con <- dbConnect(xarray(), builder = function(xr) {
-  xr$open_mfdataset(c("a.nc", "b.nc"), engine = "h5netcdf")
+  xr$open_dataset(f)$rename(list(pcp = "precip"))
+})
+dbListTables(con)
+
+## many files as one dataset (open_mfdataset needs dask)
+reticulate::py_require("dask")
+files <- c(f, f)  # e.g. a daily series of files on one grid
+con <- dbConnect(xarray(), builder = function(xr) {
+  xr$open_mfdataset(files, combine = "nested", concat_dim = "run")
 })
 
 ## an object already built in the session

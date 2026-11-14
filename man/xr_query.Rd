@@ -30,10 +30,15 @@ it, log it, put it in a registry row.
 \details{
 Rules for \code{sel} and \code{isel} values:
 \itemize{
-\item a length-2 vector becomes a Python \code{slice(a, b)} (a range on that
-dimension; for \code{sel} this is label-based and inclusive per xarray)
+\item a length-2 numeric, \code{Date} or \code{POSIXct} vector becomes a Python
+\code{slice(a, b)} (a range on that dimension; for \code{sel} this is
+label-based and inclusive per xarray)
 \item a length-1 value is a scalar selection (drops the dimension)
-\item longer vectors become Python lists (fancy indexing)
+\item character vectors, even of length 2, and longer vectors become
+Python lists: exact labels (\code{sel = list(station = c("A01", "B02"))})
+or positions. For a time range give \code{Date} or \code{POSIXct}, not strings
+\item a \code{POSIXct} is written as its instant in UTC, as xarray stores
+times
 }
 
 NOTE \code{isel} uses zero-based Python indices, faithfully: this function

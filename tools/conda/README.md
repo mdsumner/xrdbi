@@ -25,7 +25,7 @@ Each of these was found by testing, not assumed.
    to learn the activated `PATH`, and fails with "Unable to find conda
    binary" when no conda, mamba or micromamba is on `PATH` or in its
    usual places. That is the case in pixi environments and build
-   sandboxes; with it, reticulate falls back to provisioning from PyPI.
+   sandboxes, and reticulate then falls back to provisioning from PyPI.
    micromamba in the environment gives it one. (This is upstream
    reticulate behaviour, worth raising there: an already-activated
    environment needs no `conda run`.)

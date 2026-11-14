@@ -1,12 +1,16 @@
 #' Xarray result
 #'
 #' A statement is a Python expression evaluated with `ds` (the dataset)
-#' and `xr` (the module) in scope. Evaluation at [DBI::dbSendQuery()] is
-#' lazy in the xarray sense: it builds the selection graph, moves no
-#' bytes. Rendering to the tidy data frame happens at the first
-#' [DBI::dbFetch()]: one row per cell, every coordinate as a column,
-#' exactly as xarray's `to_dataframe().reset_index()` gives it.
-#' [DBI::dbGetQuery()] is the two in one step.
+#' and `xr` (the module) in scope, plus any `params`. Evaluation happens
+#' at [DBI::dbSendQuery()]. A selection (`sel()`, `isel()`, indexing) is
+#' lazy there: it describes the cells and reads nothing. A statement that
+#' computes, such as a reduction (`.mean()`) or arithmetic, runs right
+#' then unless the data are dask-backed, and the `max_cells` guard sizes
+#' only its result, so it does not cover that computation. Rendering to
+#' the tidy data frame happens at the first [DBI::dbFetch()]: one row per
+#' cell, every coordinate as a column, exactly as xarray's
+#' `to_dataframe().reset_index()` gives it. [DBI::dbGetQuery()] is the
+#' two in one step.
 #'
 #' The first fetch is guarded: an xarray result above `max_cells` cells
 #' errors unless `force = TRUE` (see `options(xrdbi.max_cells = )`).
@@ -56,32 +60,41 @@
 #' * `show()`: called for its output
 #' @examples
 #' \dontrun{
-#' ## needs a Python environment with xarray (and here h5netcdf)
-#' con <- dbConnect(xarray(), "oisst.nc", engine = "h5netcdf")
-#' res <- dbSendQuery(con, "ds.sst.isel(time=0)")
+#' ## needs a Python environment with xarray (see ?xrdbi)
+#' f <- system.file("extdata/autotest/trmm.nc", package = "xrdbi")
+#' con <- dbConnect(xarray(), f)
+#' res <- dbSendQuery(con, "ds.pcp.isel(time=0)")
 #' dbFetch(res, n = 5)
 #' dbFetch(res, n = 5)
 #' dbGetRowCount(res)
 #' dbClearResult(res)
 #'
-#' dbGetQuery(con, "ds.sst.sel(lat=slice(-56, -55), lon=slice(100, 101))")
+#' dbGetQuery(con, "ds.pcp.sel(latitude=slice(-15, -12), longitude=slice(-75, -72))")
 #'
-#' ## values from R, by name
+#' ## values from R, by name: the cells nearest two points
 #' dbGetQuery(con,
-#'   "ds.sst.sel(lat=xr.DataArray(lats, dims='pt'),
-#'               lon=xr.DataArray(lons, dims='pt'), method='nearest')",
-#'   params = list(lats = c(-60, -55), lons = c(100, 140)))
-#' res <- dbSendQuery(con, "ds.sst.sel(time=t0)",
-#'                    params = list(t0 = as.Date("1981-09-01")))
-#' dbBind(res, list(t0 = as.Date("1981-09-02")))
-#' dbFetch(res, n = 5)
+#'   "ds.pcp.isel(time=0).sel(latitude=xr.DataArray(lats, dims='pt'),
+#'     longitude=xr.DataArray(lons, dims='pt'), method='nearest')",
+#'   params = list(lats = c(-15.1, -12.6), lons = c(-75.3, -72.8)))
+#'
+#' ## rebind and fetch again; method='nearest' also matches times that are
+#' ## not at midnight (OISST's are at 12:00, so an exact date would not)
+#' res <- dbSendQuery(con, "ds.pcp.sel(time=t0, method='nearest')",
+#'                    params = list(t0 = as.Date("2011-01-01")))
+#' dbFetch(res, n = 3)
+#' dbBind(res, list(t0 = as.Date("2011-01-02")))
+#' dbFetch(res, n = 3)
 #' dbClearResult(res)
 #'
-#' ## geometry: sf or wk vectors become shapely (a GeoSeries with a CRS),
-#' ## e.g. for xvec
-#' pts <- wk::xy(c(100.1, 140.2), c(-60.3, -55.4), crs = "EPSG:4326")
-#' dbGetQuery(con, "ds.sst.xvec.extract_points(pts, x_coords='lon', y_coords='lat')",
-#'            params = list(pts = pts))
+#' ## geometry: sf or wk vectors become shapely (a GeoSeries with a CRS);
+#' ## the .xvec accessor exists once xvec has been imported
+#' reticulate::py_require(c("xvec", "geopandas"))
+#' reticulate::import("xvec")
+#' pts <- wk::xy(c(-75.3, -72.8), c(-15.1, -12.6), crs = "EPSG:4326")
+#' dbGetQuery(con,
+#'   "ds.pcp.xvec.extract_points(pts, x_coords='longitude', y_coords='latitude')",
+#'   params = list(pts = pts))
+#' dbDisconnect(con)
 #' }
 #' @export
 setClass("XarrayResult", contains = "DBIResult",

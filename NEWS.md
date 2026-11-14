@@ -1,5 +1,18 @@
 # xrdbi (development version)
 
+## Documentation
+
+* Reference pages corrected in a documentation sweep: examples now use
+  the vendored fixtures (`trmm.nc`, `rgbsmall.tif`) so they run as pasted,
+  and no longer select an exact date that misses 12:00 times, use xvec
+  without importing it, pass `chunks = list()` (a Python list) or open zarr
+  on the dask path. Statements that compute (e.g. `.mean()`) are
+  documented as running at `dbSendQuery()`, before the guard, which sizes
+  only the result. `?tbl_xarray` lists the supported verbs and filter
+  forms, the guard and `force`, and the preview options; `?xr_raster`
+  says y and x are the last two dimensions and how `srs` is found;
+  `?xr_query` says character vectors are labels, not ranges.
+
 ## Chunk maps
 
 * New `xr_chunks()` maps the storage chunks a selection touches: one row

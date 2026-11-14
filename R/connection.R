@@ -35,11 +35,13 @@
 #' * `dbBegin()`, `dbCommit()`, `dbRollback()`: no return, they error
 #' @examples
 #' \dontrun{
-#' ## needs a Python environment with xarray (and here h5netcdf)
-#' con <- dbConnect(xarray(), "oisst.nc", engine = "h5netcdf")
+#' ## needs a Python environment with xarray (see ?xrdbi)
+#' f <- system.file("extdata/autotest/trmm.nc", package = "xrdbi")
+#' con <- dbConnect(xarray(), f)
 #' con
-#' dbListTables(con)
-#' dbListFields(con, "sst")
+#' dbListTables(con)       # every variable, coordinates included
+#' dbGetInfo(con)$tables   # the data variables
+#' dbListFields(con, "pcp")
 #' dbGetInfo(con)$sizes
 #' dbDisconnect(con)
 #' }
@@ -63,10 +65,11 @@ conn_xr <- function(conn) conn@ptr$xr
 #' @return a reticulate Python object, not converted to R
 #' @examples
 #' \dontrun{
-#' ## needs a Python environment with xarray (and here h5netcdf)
-#' con <- dbConnect(xarray(), "oisst.nc", engine = "h5netcdf")
+#' ## needs a Python environment with xarray (see ?xrdbi)
+#' f <- system.file("extdata/autotest/trmm.nc", package = "xrdbi")
+#' con <- dbConnect(xarray(), f)
 #' ds <- xr_dataset(con)
-#' ds$sst$encoding
+#' ds$pcp$encoding
 #' xr_module(con)$`__version__`
 #' }
 #' @export
@@ -174,10 +177,13 @@ setMethod("dbListFields", signature("XarrayConnection", "character"),
 #' @return a data frame, one row per cell of the variable
 #' @examples
 #' \dontrun{
-#' ## needs a Python environment with xarray (and here h5netcdf)
-#' con <- dbConnect(xarray(), "oisst.nc", engine = "h5netcdf")
-#' dbReadTable(con, "lat")
-#' dbReadTable(con, "sst", max_cells = 2e6)
+#' ## needs a Python environment with xarray (see ?xrdbi)
+#' f <- system.file("extdata/autotest/trmm.nc", package = "xrdbi")
+#' con <- dbConnect(xarray(), f)
+#' dbReadTable(con, "latitude")
+#' head(dbReadTable(con, "pcp"))
+#' ## the guard: 1600 cells is over a limit of 100
+#' try(dbReadTable(con, "pcp", max_cells = 100))
 #' }
 #' @export
 setMethod("dbReadTable", signature("XarrayConnection", "character"),

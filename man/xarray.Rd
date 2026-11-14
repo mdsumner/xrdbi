@@ -39,7 +39,13 @@ drv <- xarray()
 drv
 dbDataType(drv, Sys.Date())
 \dontrun{
-## needs a Python environment with xarray (and here zarr)
-con <- dbConnect(drv, "https://example.com/oisst.zarr", open = "open_zarr")
+## needs a Python environment with xarray (see ?xrdbi)
+f <- system.file("extdata/autotest/trmm.nc", package = "xrdbi")
+con <- dbConnect(drv, f)
+
+## open_zarr defaults to dask; chunks = None keeps the fast lazy path
+reticulate::py_require("zarr")
+con <- dbConnect(drv, "path/or/url.zarr", open = "open_zarr",
+                 chunks = reticulate::py_none())
 }
 }

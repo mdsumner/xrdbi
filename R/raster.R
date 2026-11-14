@@ -11,33 +11,49 @@
 #'
 #' The selected object must be a DataArray that squeezes to 2 or 3
 #' dimensions: (y, x) for a single band, (band, y, x) for a stack
-#' (e.g. a time series of slabs). The y and x dimension coordinates
-#' must be 1-D and regular; the half-cell bbox expansion assumes
-#' cell-centre coordinates. Ascending or descending coordinate order
-#' is handled on either axis (rows and columns are reordered into
-#' top-left pixel order). Curvilinear grids have no affine rendering
-#' and error.
+#' (e.g. a time series of slabs). y and x are taken by position, the
+#' last two dimensions, whatever their names: an array stored (lon, lat)
+#' renders transposed, so put it in order in the statement
+#' (`.transpose('lat', 'lon')`). The y and x coordinates must be 1-D,
+#' numeric and regular (to their storage precision: float32 grids are
+#' fine); the half-cell bbox expansion assumes cell-centre coordinates.
+#' Ascending or descending coordinate order is handled on either axis
+#' (rows and columns are reordered into top-left pixel order).
+#' Curvilinear grids have no affine rendering, and vector data cubes
+#' (an xvec geometry dimension) no raster at all; both error with the
+#' reason.
+#'
+#' `srs` is the CRS found in this order: an index carrying one (xproj's
+#' `CRSIndex`, as gdalxarray sets; rasterix's `RasterIndex`); WKT in a
+#' `crs_wkt` or `spatial_ref` attribute of a `spatial_ref`/`crs`
+#' coordinate, of the variable named by the CF `grid_mapping` attribute,
+#' or of a dataset variable named `spatial_ref` or `crs`; and last the
+#' CF parameters of that `grid_mapping` variable, through pyproj when it
+#' is installed. `""` when none is found.
 #'
 #' @param x an XarrayResult, or an XarrayConnection (with `statement`)
 #' @param statement a Python expression, when `x` is a connection
 #' @param params named list of values the statement refers to, when
 #'   `x` is a connection (see [XarrayResult-class])
 #' @param as_list if TRUE, a list of band vectors instead of one
-#'   band-interleaved vector
+#'   band-sequential vector
 #' @param max_cells guard threshold, as elsewhere
 #' @param force bypass the guard
 #' @return a vector (or list of band vectors) with attribute `gis`,
 #'   interchangeable with the output of gdalraster `read_ds`
 #' @examples
 #' \dontrun{
-#' ## needs a Python environment with xarray (and here h5netcdf)
-#' con <- dbConnect(xarray(), "oisst.nc", engine = "h5netcdf")
-#' r <- xr_raster(con, "ds.sst.isel(time=0, zlev=0)")
+#' ## needs a Python environment with xarray (see ?xrdbi)
+#' f <- system.file("extdata/autotest/trmm.nc", package = "xrdbi")
+#' con <- dbConnect(xarray(), f)
+#' r <- xr_raster(con, "ds.pcp.isel(time=0)")
 #' attr(r, "gis")$dim
+#' attr(r, "gis")$bbox
 #'
 #' ## or from a result
-#' res <- dbSendQuery(con, "ds.sst.isel(time=0, zlev=0)")
+#' res <- dbSendQuery(con, "ds.pcp.isel(time=0)")
 #' r <- xr_raster(res)
+#' dbClearResult(res)
 #' }
 #' @export
 xr_raster <- function(x, statement = NULL, as_list = FALSE,
