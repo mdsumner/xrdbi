@@ -85,3 +85,8 @@ tbl(con, "2m_temperature") |>
   head(3) |> collect()
 }
 }
+\seealso{
+\link[=XarrayResult-class]{XarrayResult} for statements written in Python (and
+values passed with \code{params}); \code{\link[=xr_query]{xr_query()}}; the guard and preview
+options in \link{xrdbi-package}.
+}

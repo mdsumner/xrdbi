@@ -30,3 +30,7 @@ ds$pcp$encoding
 xr_module(con)$`__version__`
 }
 }
+\seealso{
+\link[=dbConnect,XarrayDriver-method]{dbConnect()} with \verb{object = }
+to connect to a Dataset built or changed in Python; \link{xrdbi-package} for an overview.
+}

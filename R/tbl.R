@@ -50,6 +50,9 @@
 #' @param from a variable name (a data variable, or a coordinate)
 #' @param ... unused
 #' @return a lazy `tbl_xarray`; [dplyr::collect()] returns a tibble
+#' @seealso [XarrayResult-class] for statements written in Python (and
+#'   values passed with `params`); [xr_query()]; the guard and preview
+#'   options in [xrdbi-package].
 #' @examples
 #' \dontrun{
 #' ## needs a Python environment with xarray (and here zarr, gcsfs)

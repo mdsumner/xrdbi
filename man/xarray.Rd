@@ -49,3 +49,7 @@ con <- dbConnect(drv, "path/or/url.zarr", open = "open_zarr",
                  chunks = reticulate::py_none())
 }
 }
+\seealso{
+\link[=dbConnect,XarrayDriver-method]{dbConnect()} to open a
+connection; \link{xrdbi-package} for an overview.
+}

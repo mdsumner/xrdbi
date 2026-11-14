@@ -41,6 +41,8 @@
 #' @param force bypass the guard
 #' @return a vector (or list of band vectors) with attribute `gis`,
 #'   interchangeable with the output of gdalraster `read_ds`
+#' @seealso [xr_chunks()] for the storage chunks under a slab;
+#'   [XarrayResult-class] for statements and `params`; [xrdbi-package] for an overview.
 #' @examples
 #' \dontrun{
 #' ## needs a Python environment with xarray (see ?xrdbi)

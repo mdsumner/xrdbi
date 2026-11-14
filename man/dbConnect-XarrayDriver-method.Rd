@@ -44,6 +44,11 @@ through as Python keyword arguments, e.g. \code{engine = "h5netcdf"},
 \code{decode_times = TRUE}, or \code{chunks = reticulate::dict()} (Python
 \code{chunks={}}: dask at the storage chunking; an R \code{list()} would
 become a Python list).
+\code{engine = "gdalxarray"} opens anything GDAL reads (it needs the GDAL
+Python bindings; see \link{xrdbi-package}). It uses GDAL's
+multidimensional API by default; \code{multidim = FALSE} uses the
+classic raster API, where a GeoTIFF or COG becomes one variable,
+\code{band_data}, over (band, y, x).
 \item \code{builder}: an R function of one argument (the xarray module, not
 converted) returning a Dataset. Use this when construction needs more
 than a single open call, e.g. virtualizarr or icechunk session setup.
@@ -79,4 +84,10 @@ con <- dbConnect(xarray(), builder = function(xr) {
 reticulate::py_run_string("import xarray; myds = xarray.Dataset()")
 con <- dbConnect(xarray(), object = reticulate::py_eval("myds", convert = FALSE))
 }
+}
+\seealso{
+\link[=XarrayConnection-class]{XarrayConnection} for what a connection offers;
+\link[=XarrayResult-class]{XarrayResult} to query it with Python statements;
+\link[=tbl_xarray]{tbl()} to query it with dplyr verbs; the Python
+requirements in \link{xrdbi-package} for the engines a source needs.
 }

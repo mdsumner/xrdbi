@@ -58,6 +58,10 @@
 #' * `dbGetStatement()`: the statement
 #' * `dbClearResult()`: `TRUE`, invisibly
 #' * `show()`: called for its output
+#' @seealso [xr_query()] to write a statement from a structured
+#'   selection; [tbl()][tbl_xarray] to compile one from dplyr verbs;
+#'   [xr_raster()] and [xr_chunks()] to render the same statement other
+#'   ways; the guard's options in [xrdbi-package].
 #' @examples
 #' \dontrun{
 #' ## needs a Python environment with xarray (see ?xrdbi)

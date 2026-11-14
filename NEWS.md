@@ -13,6 +13,15 @@
   says y and x are the last two dimensions and how `srs` is found;
   `?xr_query` says character vectors are labels, not ranges.
 
+* `?xrdbi` is now the package's overview page: how xarray maps to DBI
+  (tables, fields, statements, the long form), the functions by task,
+  the guards and the four options (`xrdbi.max_cells`,
+  `xrdbi.max_chunks`, `xrdbi.print_n` and `xrdbi.print_preview`, the
+  last two previously undocumented), which R packages are used when
+  installed, and the Python requirements. Every reference page links
+  onward with a See also section, and `?dbConnect` says what
+  `multidim = FALSE` does for the gdalxarray engine.
+
 ## Chunk maps
 
 * New `xr_chunks()` maps the storage chunks a selection touches: one row

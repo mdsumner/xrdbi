@@ -48,3 +48,7 @@ The compiled expression is the contract; inspect it.
 \examples{
 xr_query(vars = "sst", sel = list(lat = c(-80, -60)), isel = list(time = 0))
 }
+\seealso{
+\link[=XarrayResult-class]{XarrayResult} to run the statement; \link[=tbl_xarray]{tbl()}
+to compile statements from dplyr verbs instead.
+}

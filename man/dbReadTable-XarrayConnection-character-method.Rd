@@ -44,3 +44,7 @@ head(dbReadTable(con, "pcp"))
 try(dbReadTable(con, "pcp", max_cells = 100))
 }
 }
+\seealso{
+\link[=tbl_xarray]{tbl()} or a statement (\link[=XarrayResult-class]{XarrayResult}) to
+read part of a variable; the guard's option in \link{xrdbi-package}.
+}

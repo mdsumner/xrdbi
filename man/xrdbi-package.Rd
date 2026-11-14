@@ -8,6 +8,86 @@
 \description{
 Treats a live Python session holding an 'xarray' \url{https://xarray.dev} object as a database connection. Tables are variables, fields are dimensions and coordinates, and queries are Python expressions (or compiled from a small structured spec or from 'dplyr' verbs) evaluated lazily against the dataset. Fetching renders the tidy long form, one row per cell, built in R from the values; results can also render as an in-memory raster.
 }
+\section{How xarray maps to DBI}{
+
+A connection holds one xarray Dataset, open in the Python session.
+\itemize{
+\item \strong{Tables} are its variables, data variables and coordinates alike:
+\code{\link[DBI:dbListTables]{DBI::dbListTables()}} lists them all, while \code{dbGetInfo()$tables}
+lists only the data variables.
+\item The \strong{fields} of a table are its dimensions, then its
+non-dimension coordinates, then the variable itself: the columns its
+rows will have (\code{\link[DBI:dbListFields]{DBI::dbListFields()}}).
+\item A \strong{statement} is a Python expression over \code{ds} (the Dataset) and
+\code{xr} (the module), such as \code{"ds.sst.isel(time=0)"}. It runs when
+sent; a selection reads nothing there, a computation runs in full
+(see \link[=XarrayResult-class]{XarrayResult}).
+\item \strong{Fetching} renders the result in long form, as xarray's
+\verb{to_dataframe().reset_index()} would: one row per cell, a column per
+coordinate. Missing floats stay \code{NaN}, times become \code{POSIXct} in
+UTC (as xarray stores them), and the geometry of a vector data cube becomes a \code{\link[wk:wkb]{wk::wkb()}}
+vector with its CRS when wk is installed (WKT strings otherwise).
+}
+}
+
+\section{Functions by task}{
+
+\itemize{
+\item \strong{Connect}: \code{\link[=xarray]{xarray()}} is the driver; \link[=dbConnect,XarrayDriver-method]{dbConnect()}
+opens a path or URL, runs a builder function, or adopts a Python
+object; \code{dbDisconnect()} closes it.
+\item \strong{Look around}: print the connection, or use \code{dbListTables()},
+\code{dbListFields()} and \code{dbGetInfo()} (\link[=XarrayConnection-class]{XarrayConnection}).
+\item \strong{Query in Python}: \code{dbGetQuery(con, statement)}, or \code{dbSendQuery()}
+then \code{dbFetch()} in pages; pass values from R with \code{params} and
+rebind with \code{dbBind()} (\link[=XarrayResult-class]{XarrayResult}). \code{\link[=xr_query]{xr_query()}} writes a
+statement from a structured selection.
+\item \strong{Query with dplyr}: \link[=tbl_xarray]{tbl()} gives a lazy table for
+\code{filter()}, \code{select()}, \code{head()} and \code{collect()}, compiled to a
+statement that \code{\link[dplyr:show_query]{dplyr::show_query()}} prints.
+\item \strong{Read a whole variable}: \link[=dbReadTable,XarrayConnection,character-method]{dbReadTable()}.
+\item \strong{Render other ways}: \code{\link[=xr_raster]{xr_raster()}} gives a 2-D or 3-D slab in
+gdalraster's in-memory raster form; \code{\link[=xr_chunks]{xr_chunks()}} maps the storage
+chunks a selection touches.
+\item \strong{Use Python directly}: \code{\link[=xr_dataset]{xr_dataset()}} and \code{\link[=xr_module]{xr_module()}} return the
+Dataset and the xarray module, unconverted.
+}
+}
+
+\section{Guards and options}{
+
+Reads that materialize data are guarded: above a size they error,
+naming the size, unless the call is given \code{force = TRUE}. Each guarded
+function also takes the threshold as an argument; the options set the
+defaults.
+\itemize{
+\item \code{xrdbi.max_cells} (default \code{1e7}): the most cells a read renders: the
+first \code{dbFetch()} of a result (so \code{dbGetQuery()}), \code{dbReadTable()},
+\code{collect()} of a \link{tbl_xarray}, and \code{\link[=xr_raster]{xr_raster()}}. It sizes the
+result of a statement, not its computation: \code{.mean('time')} runs at
+\code{dbSendQuery()}, before the guard sees the result.
+\item \code{xrdbi.max_chunks} (default \code{1e6}): the most rows \code{\link[=xr_chunks]{xr_chunks()}}
+returns.
+\item \code{xrdbi.print_n} (default \code{6}): the rows a printed \link{tbl_xarray}
+previews, reading at most one chunk.
+\item \code{xrdbi.print_preview} (default \code{TRUE}): \code{FALSE} prints a
+\link{tbl_xarray}'s compiled statement without the preview's data read
+(compiling still reads coordinates).
+}
+}
+
+\section{R packages used when installed}{
+
+\itemize{
+\item wk: geometry. Vector cube geometry arrives as \code{\link[wk:wkb]{wk::wkb()}} (WKT
+strings without it), geometry \code{params} are sent through it, and
+\code{\link[=xr_chunks]{xr_chunks()}} returns each chunk's rectangle as a \code{\link[wk:rct]{wk::rct()}}.
+\item sf: not needed, but \code{sf::st_as_sfc()} converts any of those.
+\item gdalraster: not needed by \code{\link[=xr_raster]{xr_raster()}}, but its output is in the
+form gdalraster's \code{read_ds()} returns, so \code{plot_raster()} takes it.
+}
+}
+
 \section{Python requirements}{
 
 Loading xrdbi declares its core Python requirements with
@@ -22,6 +102,8 @@ then switches to an environment that adds them):
 \code{"s3fs"} for cloud buckets
 \item netCDF/HDF5 over HTTPS via h5netcdf:
 \code{reticulate::py_require(c("h5netcdf", "h5py", "fsspec", "aiohttp"))}
+\item many files as one dataset (\code{open_mfdataset}):
+\code{reticulate::py_require("dask")}
 \item vector data cubes: \code{reticulate::py_require(c("xvec", "geopandas"))}
 }
 
@@ -33,6 +115,20 @@ environment), install the packages there; reticulate does not
 provision into it.
 }
 
+\examples{
+\dontrun{
+## needs a Python environment with xarray (see Python requirements)
+library(DBI)
+f <- system.file("extdata/autotest/trmm.nc", package = "xrdbi")
+con <- dbConnect(xarray(), f)
+con
+dbGetQuery(con, "ds.pcp.isel(time=0, latitude=0, longitude=slice(0, 3))")
+
+library(dplyr)
+tbl(con, "pcp") |> filter(latitude > -14, latitude < -13) |> collect()
+dbDisconnect(con)
+}
+}
 \seealso{
 Useful links:
 \itemize{
@@ -55,4 +151,3 @@ Other contributors:
 }
 
 }
-\keyword{internal}

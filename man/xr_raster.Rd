@@ -80,3 +80,7 @@ r <- xr_raster(res)
 dbClearResult(res)
 }
 }
+\seealso{
+\code{\link[=xr_chunks]{xr_chunks()}} for the storage chunks under a slab;
+\link[=XarrayResult-class]{XarrayResult} for statements and \code{params}; \link{xrdbi-package} for an overview.
+}

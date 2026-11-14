@@ -10,6 +10,8 @@
 #' @return `xarray()`: an XarrayDriver. `dbDataType()`: character, the
 #'   numpy dtype an R vector maps to. `dbUnloadDriver()`: `TRUE`,
 #'   invisibly. `show()`: called for its output.
+#' @seealso [dbConnect()][dbConnect,XarrayDriver-method] to open a
+#'   connection; [xrdbi-package] for an overview.
 #' @export
 #' @importFrom methods new
 #' @examples
@@ -66,6 +68,11 @@ setMethod("dbDataType", "XarrayDriver", function(dbObj, obj, ...) {
 #'   `decode_times = TRUE`, or `chunks = reticulate::dict()` (Python
 #'   `chunks={}`: dask at the storage chunking; an R `list()` would
 #'   become a Python list).
+#'   `engine = "gdalxarray"` opens anything GDAL reads (it needs the GDAL
+#'   Python bindings; see [xrdbi-package]). It uses GDAL's
+#'   multidimensional API by default; `multidim = FALSE` uses the
+#'   classic raster API, where a GeoTIFF or COG becomes one variable,
+#'   `band_data`, over (band, y, x).
 #' * `builder`: an R function of one argument (the xarray module, not
 #'   converted) returning a Dataset. Use this when construction needs more
 #'   than a single open call, e.g. virtualizarr or icechunk session setup.
@@ -84,6 +91,10 @@ setMethod("dbDataType", "XarrayDriver", function(dbObj, obj, ...) {
 #' @param builder function taking the xarray module, returning a Dataset
 #' @param object an existing Python xarray object to adopt
 #' @return an [XarrayConnection][XarrayConnection-class]
+#' @seealso [XarrayConnection-class] for what a connection offers;
+#'   [XarrayResult-class] to query it with Python statements;
+#'   [tbl()][tbl_xarray] to query it with dplyr verbs; the Python
+#'   requirements in [xrdbi-package] for the engines a source needs.
 #' @examples
 #' \dontrun{
 #' ## needs a Python environment with xarray (see ?xrdbi)

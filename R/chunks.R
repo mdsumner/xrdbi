@@ -52,6 +52,8 @@
 #'   the dimensions have no 1-D coordinates of their own. Attribute
 #'   `chunking` says where
 #'   the shapes came from: `"storage"`, `"shards"`, `"dask"` or `"none"`.
+#' @seealso [xr_raster()] to read the cells; [XarrayResult-class] for
+#'   statements and `params`; [xrdbi-package] for an overview.
 #' @examples
 #' \dontrun{
 #' ## needs a Python environment with xarray (and here zarr, gcsfs)

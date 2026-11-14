@@ -107,3 +107,8 @@ dbGetInfo(con)$sizes
 dbDisconnect(con)
 }
 }
+\seealso{
+\link[=dbConnect,XarrayDriver-method]{dbConnect()} to open one;
+\link[=XarrayResult-class]{XarrayResult} for queries; \code{\link[=xr_dataset]{xr_dataset()}} for the Python
+object; \link{xrdbi-package} for an overview.
+}

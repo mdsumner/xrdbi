@@ -27,6 +27,8 @@
 #' @param tail extra Python method chain appended verbatim, e.g.
 #'   `".mean('time')"`
 #' @return character, a Python expression over `ds`
+#' @seealso [XarrayResult-class] to run the statement; [tbl()][tbl_xarray]
+#'   to compile statements from dplyr verbs instead.
 #' @export
 #' @examples
 #' xr_query(vars = "sst", sel = list(lat = c(-80, -60)), isel = list(time = 0))

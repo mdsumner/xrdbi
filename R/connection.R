@@ -33,6 +33,9 @@
 #' * `dbQuoteIdentifier()`, `dbQuoteString()`: [DBI::SQL()] holding
 #'   Python source (`ds['name']`, `'text'`)
 #' * `dbBegin()`, `dbCommit()`, `dbRollback()`: no return, they error
+#' @seealso [dbConnect()][dbConnect,XarrayDriver-method] to open one;
+#'   [XarrayResult-class] for queries; [xr_dataset()] for the Python
+#'   object; [xrdbi-package] for an overview.
 #' @examples
 #' \dontrun{
 #' ## needs a Python environment with xarray (see ?xrdbi)
@@ -63,6 +66,8 @@ conn_xr <- function(conn) conn@ptr$xr
 #'
 #' @param conn an XarrayConnection
 #' @return a reticulate Python object, not converted to R
+#' @seealso [dbConnect()][dbConnect,XarrayDriver-method] with `object = `
+#'   to connect to a Dataset built or changed in Python; [xrdbi-package] for an overview.
 #' @examples
 #' \dontrun{
 #' ## needs a Python environment with xarray (see ?xrdbi)
@@ -175,6 +180,8 @@ setMethod("dbListFields", signature("XarrayConnection", "character"),
 #' @param max_cells guard threshold, default `getOption("xrdbi.max_cells", 1e7)`
 #' @param force bypass the guard
 #' @return a data frame, one row per cell of the variable
+#' @seealso [tbl()][tbl_xarray] or a statement ([XarrayResult-class]) to
+#'   read part of a variable; the guard's option in [xrdbi-package].
 #' @examples
 #' \dontrun{
 #' ## needs a Python environment with xarray (see ?xrdbi)

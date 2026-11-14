@@ -97,3 +97,7 @@ ch[, c("band_chunk", "y_start", "y_stop", "x_start", "x_stop", "cells")]
 plot(ch$geometry)
 }
 }
+\seealso{
+\code{\link[=xr_raster]{xr_raster()}} to read the cells; \link[=XarrayResult-class]{XarrayResult} for
+statements and \code{params}; \link{xrdbi-package} for an overview.
+}

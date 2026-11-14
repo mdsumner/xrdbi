@@ -158,3 +158,9 @@ dbGetQuery(con,
 dbDisconnect(con)
 }
 }
+\seealso{
+\code{\link[=xr_query]{xr_query()}} to write a statement from a structured
+selection; \link[=tbl_xarray]{tbl()} to compile one from dplyr verbs;
+\code{\link[=xr_raster]{xr_raster()}} and \code{\link[=xr_chunks]{xr_chunks()}} to render the same statement other
+ways; the guard's options in \link{xrdbi-package}.
+}
