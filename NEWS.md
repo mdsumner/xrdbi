@@ -61,6 +61,22 @@
 
 ## Chunk maps
 
+* `xr_chunks()` maps start with the chunk key of a byterefs table:
+  `array`, the stored variable, and, for storage chunks, `dim_0 ..
+  dim_{n-1}` (integer), the chunk's 0-based position along each stored
+  dimension. byterefs views and zaro's `zaro_plan()` use the same key, so
+  a chunk map joins to them, one array at a time, for what they record
+  of each chunk: presence, path and byte range (checked against zaro on
+  zarr v2 and sharded v3 stores). Shard, dask
+  and whole-variable maps have no `dim_` keys. This is step 1 of the
+  byterefs/necker "one centre" notes: one plan vocabulary.
+
+* `xr_chunks()` takes a Dataset statement (`ds[['sst', 'ice']].sel(...)`)
+  and maps each data variable under the one selection, a row per variable
+  and chunk. Variables on different dimensions get missing values in the
+  columns they lack; the guard counts every variable's rows; `chunking`
+  is one value per variable when they differ.
+
 * New `xr_chunks()` maps the storage chunks a selection touches: one row
   per chunk with, for each dimension, its chunk index, its 0-based
   `start`/`stop` index range (as in `isel(slice(start, stop))`) and its

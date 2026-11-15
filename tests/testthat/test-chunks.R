@@ -66,6 +66,101 @@ test_that("a selection maps the chunks it touches and how much of each", {
   expect_equal(nrow(xr_chunks(res)), 2 * 3)
 })
 
+test_that("storage maps carry the byterefs key: array, dim_0 ..", {
+  skip_if_no_xarray()
+  con <- make_chunked_con()
+  on.exit(DBI::dbDisconnect(con))
+  ch <- xr_chunks(con, "ds.sst.isel(time=1, lat=slice(1, 3), lon=[0, 4])")
+  expect_identical(names(ch)[1:5],
+                   c("array", "dim_0", "dim_1", "dim_2", "time_chunk"))
+  expect_identical(unique(ch$array), "sst")
+  ## positions in the stored dimension order, kept for a dim selected away
+  expect_type(ch$dim_0, "integer")
+  expect_equal(ch$dim_0, as.integer(ch$time_chunk))
+  expect_equal(ch$dim_1, as.integer(ch$lat_chunk))
+  expect_equal(ch$dim_2, as.integer(ch$lon_chunk))
+  ## a Dataset of one variable is the same map
+  expect_identical(xr_chunks(con, "ds[['sst']].isel(time=1, lat=slice(1, 3), lon=[0, 4])"),
+                   ch)
+})
+
+test_that("no byterefs key without storage chunks", {
+  skip_if_no_xarray()
+  con <- make_con()
+  on.exit(DBI::dbDisconnect(con))
+  one <- xr_chunks(con, "ds.sst")
+  expect_identical(names(one)[1:2], c("array", "time_chunk"))
+  expect_false(any(startsWith(names(one), "dim_")))
+})
+
+## two members of one grid, chunked differently, and a 2-D variable with
+## no storage layout
+make_grid_con <- function() {
+  DBI::dbConnect(xarray(), builder = function(xr) {
+    reticulate::py_run_string(paste(
+      "import xarray as _xr, numpy as _np, pandas as _pd",
+      "_dsg = _xr.Dataset(",
+      "  {'sst': (('time','lat','lon'), _np.arange(60.).reshape(3, 4, 5)),",
+      "   'ice': (('time','lat','lon'), _np.zeros((3, 4, 5))),",
+      "   'mask': (('lat','lon'), _np.ones((4, 5), 'int8'))},",
+      "  coords={'time': _pd.date_range('2026-01-01', periods=3),",
+      "          'lat': _np.linspace(-80, -60, 4), 'lon': _np.linspace(0, 40, 5)})",
+      "_dsg.sst.encoding['preferred_chunks'] = {'time': 1, 'lat': 2, 'lon': 2}",
+      "_dsg.ice.encoding['preferred_chunks'] = {'time': 3, 'lat': 4, 'lon': 5}",
+      sep = "\n"), convert = FALSE)
+    reticulate::py_eval("_dsg", convert = FALSE)
+  })
+}
+
+test_that("a Dataset maps each member under one selection", {
+  skip_if_no_xarray()
+  con <- make_grid_con()
+  on.exit(DBI::dbDisconnect(con))
+  st <- "ds[['sst', 'ice']].isel(time=slice(0, 2), lat=slice(1, 3))"
+  ch <- xr_chunks(con, st)
+  ## sst: 2 x 2 x 3 chunks; ice: one chunk
+  expect_equal(as.vector(table(ch$array)[c("sst", "ice")]), c(12, 1))
+  expect_identical(attr(ch, "chunking"), "storage")
+  expect_equal(ch[ch$array == "sst", "selected"],
+               xr_chunks(con, "ds.sst.isel(time=slice(0, 2), lat=slice(1, 3))")$selected)
+  ice <- ch[ch$array == "ice", ]
+  expect_equal(c(ice$dim_0, ice$dim_1, ice$dim_2), c(0L, 0L, 0L))
+  expect_equal(c(ice$cells, ice$selected), c(60, 2 * 2 * 5))
+  ## the guard counts every member's rows
+  expect_error(xr_chunks(con, st, max_chunks = 12), "touches 13 chunks")
+})
+
+test_that("a Dataset across grids fills what a member lacks", {
+  skip_if_no_xarray()
+  con <- make_grid_con()
+  on.exit(DBI::dbDisconnect(con))
+  ch <- xr_chunks(con, "ds[['sst', 'mask']].isel(time=0)")
+  mask <- ch[ch$array == "mask", ]
+  expect_equal(nrow(mask), 1L)
+  expect_identical(attr(ch, "chunking"), c(sst = "storage", mask = "none"))
+  ## mask has no time, and no storage chunks, so no key
+  expect_true(is.na(mask$time_chunk))
+  expect_s3_class(ch$time_min, "POSIXct")
+  expect_true(is.na(mask$time_min))
+  expect_true(all(is.na(c(mask$dim_0, mask$dim_1, mask$dim_2))))
+  expect_equal(mask$cells, 20)
+  skip_if_not_installed("wk")
+  expect_s3_class(ch$geometry, "wk_rct")
+  expect_equal(unlist(wk::wk_bbox(ch$geometry[ch$array == "mask"]))[1:4],
+               c(xmin = -5, ymin = -80 - 10 / 3, xmax = 45, ymax = -60 + 10 / 3))
+})
+
+test_that("Dataset refusals name the member", {
+  skip_if_no_xarray()
+  con <- make_grid_con()
+  on.exit(DBI::dbDisconnect(con))
+  expect_error(xr_chunks(con, "ds[['sst', 'ice']].rename({'ice': 'm'})"),
+               "'m': a chunk map needs a selection of stored variables")
+  expect_error(xr_chunks(con, "ds[[]]"), "needs data variables")
+  expect_error(xr_chunks(con, "ds[['sst', 'mask']]", level = "shards"),
+               "'sst': 'sst' is not stored in shards")
+})
+
 test_that("descending coordinates keep min below max", {
   skip_if_no_xarray()
   con <- make_desc_con()
@@ -102,7 +197,7 @@ test_that("guard, refusals and the geometry column", {
     "ds.sst.isel(lat=xr.DataArray([0, 1], dims='pt'), ",
     "lon=xr.DataArray([0, 1], dims='pt'))")), "pointwise")
   expect_error(xr_chunks(con, "ds.sst.mean('time').rename('m')"),
-               "one stored variable")
+               "a selection of stored variables")
   ## a dim stripped of its coordinate, then subset, cannot be placed
   expect_error(xr_chunks(con, "ds.sst.drop_vars('lat').isel(lat=slice(1, 3))"),
                "'lat' has no coordinate and was subset")
@@ -169,10 +264,13 @@ test_that("zarr v3 shards: the shard grid, and the shard of each chunk", {
   expect_identical(attr(sh, "chunking"), "shards")
   expect_equal(nrow(sh), 8L)
   expect_equal(unique(sh$cells), 2 * 60 * 100)
+  ## byterefs rows are inner chunks, so a shard map has no key
+  expect_false(any(startsWith(names(sh), "dim_")))
 
   ch <- xr_chunks(con, "ds.v")
   expect_identical(attr(ch, "chunking"), "storage")
   expect_equal(nrow(ch), 4 * 6 * 8)
+  expect_equal(ch$dim_1, as.integer(ch$y_chunk))
   per_shard <- table(paste(ch$time_shard, ch$y_shard, ch$x_shard))
   expect_equal(as.vector(per_shard), rep(24, 8))
 

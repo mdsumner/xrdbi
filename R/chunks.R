@@ -6,8 +6,10 @@
 #' over the last two dimensions (y and x, as for [xr_raster()]). Run it
 #' on the whole variable (`"ds.sst"`) to see its chunk grid, or on a
 #' selection (`"ds.sst.sel(lat=slice(-60, -50))"`) to see which chunks
-#' reading it
-#' would touch.
+#' reading it would touch. A Dataset statement
+#' (`"ds[['sst', 'ice']].sel(lat=slice(-60, -50))"`) maps every data
+#' variable in it under the one selection, with an `array` column to say
+#' whose chunk each row is.
 #'
 #' Chunk shapes come from the variable's `encoding["preferred_chunks"]`,
 #' which xarray's backends (zarr, netCDF via netCDF4 or h5netcdf, GDAL
@@ -15,13 +17,22 @@
 #' layout. Without it, a dask-backed selection maps its own dask chunks;
 #' otherwise the variable is one chunk. The selection is placed on the
 #' source grid by its coordinate values, so it must be an orthogonal
-#' selection of one stored variable (`sel()`/`isel()` by labels,
-#' slices, or lists); pointwise selections onto a new dimension are not
+#' selection of stored variables (`sel()`/`isel()` by labels, slices,
+#' or lists); pointwise selections onto a new dimension are not
 #' supported. Nothing but coordinates is read.
 #'
+#' Storage chunk maps carry the chunk key of the
+#' [byterefs](https://github.com/byterefs/spec) table, `dim_0`,
+#' `dim_1`, ...: the chunk's 0-based position along each stored
+#' dimension, in the variable's dimension order. A byterefs view
+#' `refs_<array>` and the plans of other readers (such as zaro's
+#' `zaro_plan()`) are keyed the same way, one array at a time, so a chunk
+#' map joins to them on `dim_0 ..` for what they record of each chunk
+#' (presence, path, byte range), which `xr_chunks()` does not read.
+#'
 #' @param x an XarrayResult, or an XarrayConnection (with `statement`)
-#' @param statement a Python expression selecting one stored variable,
-#'   when `x` is a connection
+#' @param statement a Python expression selecting a stored variable, or
+#'   a Dataset of them, when `x` is a connection
 #' @param params named list of values the statement refers to, when `x`
 #'   is a connection (see [XarrayResult-class])
 #' @param level `"chunks"` (the default) maps storage chunks; `"shards"`
@@ -33,7 +44,13 @@
 #'   `getOption("xrdbi.max_chunks", 1e6)`
 #' @param force bypass the guard
 #' @return a data frame, one row per chunk touched, chunks in C order
-#'   (the last dimension fastest). For each dimension `d`: `d_chunk`, the
+#'   (the last dimension fastest), variable by variable for a Dataset.
+#'   First `array`, the stored variable's name, and, when the shapes are
+#'   storage chunks (not shards, dask chunks or one whole variable), the
+#'   byterefs chunk key `dim_0 .. dim_{n-1}` (integer). In a Dataset, a
+#'   variable has missing values in the columns of dimensions it does
+#'   not have, and in the keys beyond its rank. For each dimension `d`:
+#'   `d_chunk`, the
 #'   chunk's index along `d`; `d_start` and `d_stop`, its 0-based index
 #'   range, stop exclusive (as in `isel(d=slice(start, stop))`); and,
 #'   when `d` has a coordinate, `d_min` and `d_max`, its extent: cell
@@ -50,8 +67,9 @@
 #'   centres, so half a cell inside the edges, and not split at the
 #'   antimeridian), and `geometry` is that envelope in OGC:CRS84 when
 #'   the dimensions have no 1-D coordinates of their own. Attribute
-#'   `chunking` says where
-#'   the shapes came from: `"storage"`, `"shards"`, `"dask"` or `"none"`.
+#'   `chunking` says where the shapes came from: `"storage"`,
+#'   `"shards"`, `"dask"` or `"none"`; for a Dataset whose variables
+#'   differ, one value per variable, named by variable.
 #' @seealso [xr_raster()] to read the cells; [XarrayResult-class] for
 #'   statements and `params`; [xrdbi-package] for an overview.
 #' @examples
@@ -64,6 +82,13 @@
 #' ch <- xr_chunks(con,
 #'   "ds['2m_temperature'].sel(time=slice('1980-01-01', '1980-01-31'))")
 #' nrow(ch)
+#'
+#' ## two variables of one grid under one selection: a row per variable
+#' ## and chunk, keyed by array and dim_0 .. as byterefs tables are
+#' ch <- xr_chunks(con, paste0(
+#'   "ds[['2m_temperature', '10m_u_component_of_wind']]",
+#'   ".sel(time=slice('1980-01-01T00', '1980-01-01T05'))"))
+#' ch[, c("array", "dim_0", "dim_1", "dim_2", "time_min", "cells")]
 #'
 #' ## a GeoTIFF's block grid (gdalxarray needs the GDAL Python bindings;
 #' ## multidim = FALSE opens it as a classic raster: one variable,
@@ -91,16 +116,33 @@ xr_chunks <- function(x, statement = NULL, params = NULL,
   }
   con <- res@ptr$conn
   ds <- conn_ds(con)
-  m <- py_to_r(con@ptr$chunks(res@ptr$obj, ds, level))
-  dims <- m$dims
-  counts <- vapply(dims, function(d) length(d$ids), 1)
-  n <- prod(counts)
+  ## one map per stored variable: one for a DataArray, one per data
+  ## variable for a Dataset
+  maps <- py_to_r(con@ptr$chunks(res@ptr$obj, ds, level))
+  n <- sum(vapply(maps, function(m) {
+    prod(vapply(m$dims, function(d) length(d$ids), 1))
+  }, 1))
   if (!isTRUE(force) && is.finite(max_chunks) && n > max_chunks) {
     stop(sprintf(paste0(
       "the selection touches %s chunks, above the guard (%s); select ",
       "less, raise options(xrdbi.max_chunks=), or use force = TRUE"),
       fmt_count(n), fmt_count(max_chunks)), call. = FALSE)
   }
+  parts <- lapply(maps, chunk_parts, ds = ds)
+  out <- bind_chunk_parts(parts)
+  src <- vapply(maps, function(m) m$source, "")
+  names(src) <- vapply(maps, function(m) m$var, "")
+  attr(out, "chunking") <- if (length(unique(src)) == 1L) unname(src[1L]) else src
+  out
+}
+
+## the columns of one variable's map, in three groups: the byterefs keys
+## (array, dim_0 ..), the per-dimension columns, and the rest
+chunk_parts <- function(m, ds) {
+  dims <- m$dims
+  counts <- vapply(dims, function(d) length(d$ids), 1)
+  n <- prod(counts)
+  keys <- list(array = rep(m$var, n))
 
   ## C order over the touched chunks, as the long form orders cells
   cols <- list()
@@ -115,6 +157,11 @@ xr_chunks <- function(x, statement = NULL, params = NULL,
     nm <- d$name
     start <- as.numeric(d$start)
     stop_ <- as.numeric(d$stop)
+    ## byterefs keys are storage chunk positions in the stored dimension
+    ## order; shard, dask and whole-variable grids have none
+    if (identical(m$source, "storage")) {
+      keys[[paste0("dim_", i - 1L)]] <- as.integer(d$ids)[idx]
+    }
     cols[[paste0(nm, "_chunk")]] <- as.numeric(d$ids)[idx]
     if (!is.null(d$shard)) {
       cols[[paste0(nm, "_shard")]] <- as.numeric(d$shard)[idx]
@@ -128,8 +175,7 @@ xr_chunks <- function(x, statement = NULL, params = NULL,
     cells <- cells * (stop_ - start)[idx]
     sel <- sel * as.numeric(d$selected)[idx]
   }
-  cols$cells <- cells
-  cols$selected <- sel
+  rest <- list(cells = cells, selected = sel)
 
   ## a rectangle over the last two dims, (y, x) as for xr_raster()
   nd <- length(dims)
@@ -140,7 +186,7 @@ xr_chunks <- function(x, statement = NULL, params = NULL,
     src <- py_get_item(ds, m$var)
     bt <- import_builtins(convert = FALSE)
     wkt <- lift_srs(src, as.character(py_to_r(bt$list(src$coords))), ds)
-    cols$geometry <- wk::rct(cols[[paste0(xn, "_min")]], cols[[paste0(yn, "_min")]],
+    rest$geometry <- wk::rct(cols[[paste0(xn, "_min")]], cols[[paste0(yn, "_min")]],
                              cols[[paste0(xn, "_max")]], cols[[paste0(yn, "_max")]],
                              crs = if (nzchar(wkt)) wkt else NULL)
   }
@@ -149,31 +195,83 @@ xr_chunks <- function(x, statement = NULL, params = NULL,
   if (!is.null(env)) {
     rc <- cbind(at[[nd - 1L]], at[[nd]])
     pick <- function(v) as.matrix(v)[rc]
-    cols[[paste0(env$x, "_min")]] <- pick(env$xmin)
-    cols[[paste0(env$x, "_max")]] <- pick(env$xmax)
-    cols[[paste0(env$y, "_min")]] <- pick(env$ymin)
-    cols[[paste0(env$y, "_max")]] <- pick(env$ymax)
-    if (is.null(cols$geometry) && requireNamespace("wk", quietly = TRUE)) {
-      cols$geometry <- wk::rct(cols[[paste0(env$x, "_min")]],
-                               cols[[paste0(env$y, "_min")]],
-                               cols[[paste0(env$x, "_max")]],
-                               cols[[paste0(env$y, "_max")]], crs = "OGC:CRS84")
+    rest[[paste0(env$x, "_min")]] <- pick(env$xmin)
+    rest[[paste0(env$x, "_max")]] <- pick(env$xmax)
+    rest[[paste0(env$y, "_min")]] <- pick(env$ymin)
+    rest[[paste0(env$y, "_max")]] <- pick(env$ymax)
+    if (is.null(rest$geometry) && requireNamespace("wk", quietly = TRUE)) {
+      rest$geometry <- wk::rct(rest[[paste0(env$x, "_min")]],
+                               rest[[paste0(env$y, "_min")]],
+                               rest[[paste0(env$x, "_max")]],
+                               rest[[paste0(env$y, "_max")]], crs = "OGC:CRS84")
     }
   }
-  out <- list2DF(cols, nrow = n)
-  attr(out, "chunking") <- m$source
-  out
+  list(keys = keys, dims = cols, rest = rest, n = n, var = m$var)
 }
 
-## the chunk grid of a stored variable and where a selection falls on it
+## one data frame from the maps of several variables: each group of
+## columns is the union of the variables' own, in the order first seen,
+## and a variable without a column gets missing values of its type
+bind_chunk_parts <- function(parts) {
+  n <- vapply(parts, function(p) p$n, 1)
+  if (length(parts) == 1L) {
+    p <- parts[[1L]]
+    return(list2DF(c(p$keys, p$dims, p$rest), nrow = n))
+  }
+  geo <- Filter(Negate(is.null), lapply(parts, function(p) p$rest$geometry))
+  crs <- unique(lapply(geo, wk::wk_crs))
+  if (length(crs) > 1L) {
+    warning("the variables' geometries have different CRS; geometry is dropped",
+            call. = FALSE)
+    parts <- lapply(parts, function(p) {
+      p$rest$geometry <- NULL
+      p
+    })
+  }
+  cols <- list()
+  for (g in c("keys", "dims", "rest")) {
+    for (nm in unique(unlist(lapply(parts, function(p) names(p[[g]]))))) {
+      tmpl <- NULL
+      for (p in parts) {
+        if (!is.null(p[[g]][[nm]])) {
+          tmpl <- p[[g]][[nm]]
+          break
+        }
+      }
+      cols[[nm]] <- do.call(c, lapply(parts, function(p) {
+        v <- p[[g]][[nm]]
+        if (is.null(v)) tmpl[rep(NA_integer_, p$n)] else v
+      }))
+    }
+  }
+  list2DF(cols, nrow = sum(n))
+}
+
+## the chunk grid of a stored variable and where a selection falls on it;
+## a Dataset selection gives one map per data variable
 xrdbi_chunks_py <- r"---(
 def _xrdbi_chunks(obj, ds, level='chunks'):
+    import xarray as xr
+    if not isinstance(obj, xr.Dataset):
+        return [_xrdbi_chunk_map(obj, ds, level)]
+    if not obj.data_vars:
+        raise ValueError('a chunk map of a Dataset needs data variables, '
+                         "e.g. ds[['sst', 'ice']]")
+    out = []
+    for k in obj.data_vars:
+        try:
+            out.append(_xrdbi_chunk_map(obj[k], ds, level))
+        except ValueError as e:
+            raise ValueError("'%s': %s" % (k, e)) from None
+    return out
+
+def _xrdbi_chunk_map(obj, ds, level='chunks'):
     import numpy as np, pandas as pd, xarray as xr
     if (not isinstance(obj, xr.DataArray) or obj.name is None
             or obj.name not in ds.variables):
         raise ValueError(
-            'a chunk map needs a selection of one stored variable, '
-            'e.g. ds.sst or ds.sst.isel(time=0)')
+            'a chunk map needs a selection of stored variables, '
+            "e.g. ds.sst, ds.sst.isel(time=0) or ds[['sst', 'ice']]")
     src = ds[obj.name]
     extra = [d for d in obj.dims if d not in src.dims]
     if extra:

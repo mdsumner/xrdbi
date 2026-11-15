@@ -108,6 +108,31 @@ needs `force = TRUE`:
 
 ```{r}
 try(xr_chunks(era, "ds['2m_temperature']"))
+```
+
+## Several variables
+
+A Dataset statement maps every data variable in it under the one
+selection, and `array` says whose chunk each row is. Here are two
+surface variables over six hours:
+
+```{r}
+two <- xr_chunks(era, paste0(
+  "ds[['2m_temperature', '10m_u_component_of_wind']]",
+  ".sel(time=slice('1980-01-01T00', '1980-01-01T05'))"))
+table(two$array)
+two[c(1, 7), c("array", "time_chunk", "time_min", "cells")]
+```
+
+The variables need not share dimensions. A variable has missing
+values in the columns of any dimension it lacks: here that is `level`
+for the surface variable, beside `geopotential` on 37 pressure levels:
+
+```{r}
+mix <- xr_chunks(era, paste0(
+  "ds[['2m_temperature', 'geopotential']]",
+  ".sel(time='1980-01-01T00', latitude=slice(-40, -45), longitude=slice(145, 150))"))
+mix[, c("array", "level_chunk", "latitude_chunk", "cells", "selected")]
 dbDisconnect(era)
 ```
 
@@ -155,6 +180,34 @@ dbDisconnect(z)
 The window (dashed) is 20 by 20 cells, but it crosses a corner, so it
 touches four chunks (shaded) in four shards (heavy lines).
 
+## Keys for byte references
+
+A map of storage chunks starts with the chunk key of a
+[byterefs](https://github.com/byterefs/spec) table: `array`, and
+`dim_0`, `dim_1`, ..., the chunk's 0-based position along each stored
+dimension, in the variable's dimension order. That is the same as the
+`_chunk` columns, under the names other readers use:
+
+```{r}
+chunks[1:3, c("array", "dim_0", "dim_1", "dim_2", "time_chunk", "y_chunk",
+              "x_chunk")]
+```
+
+byterefs views (`refs_<array>`) and zaro's plans (`zaro_plan()`) are
+keyed the same way, one array at a time. `xr_chunks()` reads no bytes,
+so for each chunk's presence, path and byte range, join its map to one
+of those on the keys. In a sharded array the keys index the inner chunks, as byterefs
+rows do, so a shard map has no keys. With
+[zaro](https://github.com/hypertidy/zaro), each chunk's shard object
+and its byte range within it come from the shard index:
+
+```{r, eval = FALSE}
+keys <- c("dim_0", "dim_1", "dim_2")
+p <- zaro::zaro_plan(zaro::zaro(path), "v", chunks = as.matrix(chunks[keys]))
+merge(chunks, as.data.frame(p)[c(keys, "present", "path", "offset", "size")],
+      by = keys)
+```
+
 ## Where chunk shapes come from
 
 Chunk shapes come from the variable's `encoding["preferred_chunks"]`,
@@ -169,9 +222,12 @@ multidimensional. The `chunking` attribute says which source was used:
 * `"none"`: no chunking known; the variable is one chunk
 
 The selection is placed on the stored grid by its coordinate values, so
-it must be an orthogonal selection of one stored variable, by
+it must be an orthogonal selection of stored variables, by
 `sel()`/`isel()` with labels, slices or lists. A pointwise selection onto
-a new dimension cannot be placed.
+a new dimension cannot be placed. Shards, dask chunks and whole
+variables are not storage chunks, so their maps have no `dim_0 ..` keys;
+for a Dataset whose variables differ, `chunking` has one value per
+variable.
 
 On a curvilinear grid, each chunk also gets the envelope of its block of
 2-D longitude and latitude: the
