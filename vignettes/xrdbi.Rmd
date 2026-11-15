@@ -164,7 +164,11 @@ nrow(dbGetQuery(con, q))
 
 `tbl()` gives a lazy table over one variable. Filters on dimensions are
 pushed into xarray as a selection, so only those cells are read, and
-`show_query()` prints the statement the verbs compile to.
+`show_query()` prints the statement the verbs compile to. (A table can
+also span a grid, the variables that share one set of dimensions, with
+a column each: `xr_grids()` lists them. This file has one data variable,
+so [Querying with dplyr](https://mdsumner.github.io/xrdbi/articles/dplyr.html#grid-tables)
+shows them on ERA5.)
 
 
 ``` r

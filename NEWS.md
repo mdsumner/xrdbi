@@ -84,6 +84,9 @@
 
 These come from a play kit tried on Argo, OISST and ERA5 before the move.
 
+* The README and the "Get started" vignette mention grid tables and point
+  to the "Grid tables" section of the dplyr article.
+
 ## Chunk maps
 
 * `xr_chunks()` maps start with the chunk key of a byterefs table:

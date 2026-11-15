@@ -17,11 +17,12 @@ a handle to it:
 - a statement is a Python expression over `ds`, and its result arrives
   as tidy rows, one per cell
 
-dplyr verbs compile to the same statements, `xr_raster()` renders a slab
-as a raster, and `xr_chunks()` maps the storage chunks a selection
-touches. Anything xarray can open is in reach: netCDF and HDF5 files,
-zarr in the cloud, virtual and icechunk stores, and, through the
-gdalxarray engine, anything GDAL reads.
+dplyr verbs compile to the same statements, over one variable or a grid
+of variables that share dimensions, `xr_raster()` renders a slab as a
+raster, and `xr_chunks()` maps the storage chunks a selection touches.
+Anything xarray can open is in reach: netCDF and HDF5 files, zarr in the
+cloud, virtual and icechunk stores, and, through the gdalxarray engine,
+anything GDAL reads.
 
 Documentation: <https://mdsumner.github.io/xrdbi/>
 
@@ -129,7 +130,7 @@ a small bundled file. Then:
 
 - Querying: [Querying with
   dplyr](https://mdsumner.github.io/xrdbi/articles/dplyr.html) (how each
-  verb compiles, and what gets read),
+  verb compiles, what gets read, and tables over grids),
   [Parameters](https://mdsumner.github.io/xrdbi/articles/parameters.html)
   (R values into statements by name), [From arrays to
   rows](https://mdsumner.github.io/xrdbi/articles/rendering.html) (the
