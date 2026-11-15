@@ -14,7 +14,9 @@ xr_chunks(
 )
 }
 \arguments{
-\item{x}{an XarrayResult, or an XarrayConnection (with \code{statement})}
+\item{x}{an XarrayResult, an XarrayConnection (with \code{statement}), or
+a lazy \link[=tbl_xarray]{tbl()}, whose map is of what collecting it would
+read (for a grid table, every member it reads)}
 
 \item{statement}{a Python expression selecting a stored variable, or
 a Dataset of them, when \code{x} is a connection}

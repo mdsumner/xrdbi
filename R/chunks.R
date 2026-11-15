@@ -30,7 +30,9 @@
 #' map joins to them on `dim_0 ..` for what they record of each chunk
 #' (presence, path, byte range), which `xr_chunks()` does not read.
 #'
-#' @param x an XarrayResult, or an XarrayConnection (with `statement`)
+#' @param x an XarrayResult, an XarrayConnection (with `statement`), or
+#'   a lazy [tbl()][tbl_xarray], whose map is of what collecting it would
+#'   read (for a grid table, every member it reads)
 #' @param statement a Python expression selecting a stored variable, or
 #'   a Dataset of them, when `x` is a connection
 #' @param params named list of values the statement refers to, when `x`
@@ -105,6 +107,12 @@ xr_chunks <- function(x, statement = NULL, params = NULL,
                       max_chunks = getOption("xrdbi.max_chunks", 1e6),
                       force = FALSE) {
   level <- match.arg(level)
+  if (inherits(x, "tbl_xarray")) {
+    ## what the tbl reads: its statement up to any pandas stage
+    if (is.null(x$con)) stop("no connection on this tbl", call. = FALSE)
+    statement <- tbl_compile(x, tbl_context(x))$xarray
+    x <- x$con
+  }
   if (inherits(x, "XarrayConnection")) {
     stopifnot(is.character(statement), length(statement) == 1L)
     res <- dbSendQuery(x, statement, params = params)
@@ -112,7 +120,8 @@ xr_chunks <- function(x, statement = NULL, params = NULL,
   } else if (inherits(x, "XarrayResult")) {
     res <- x
   } else {
-    stop("x must be an XarrayResult or XarrayConnection", call. = FALSE)
+    stop("x must be an XarrayResult, XarrayConnection or tbl_xarray",
+         call. = FALSE)
   }
   con <- res@ptr$conn
   ds <- conn_ds(con)

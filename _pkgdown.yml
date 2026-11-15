@@ -8,11 +8,12 @@ reference:
     contents:
       - xrdbi-package
   - title: Connect
-    desc: Open a connection to an xarray Dataset and look around it.
+    desc: Open a connection to an xarray Dataset and look around it, its variables and grids.
     contents:
       - xarray
       - '`dbConnect,XarrayDriver-method`'
       - XarrayConnection-class
+      - xr_grids
   - title: Query
     desc: >
       Python statements, compiled selections, dplyr verbs, and whole

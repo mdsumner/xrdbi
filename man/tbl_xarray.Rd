@@ -3,14 +3,16 @@
 \name{tbl_xarray}
 \alias{tbl_xarray}
 \alias{tbl.XarrayConnection}
-\title{A lazy dplyr table over an xarray variable}
+\title{A lazy dplyr table over an xarray variable or grid}
 \usage{
 \method{tbl}{XarrayConnection}(src, from, ...)
 }
 \arguments{
 \item{src}{an XarrayConnection}
 
-\item{from}{a variable name (a data variable, or a coordinate)}
+\item{from}{a variable name (a data variable, or a coordinate);
+several data variables on one grid; or the name of a grid, as
+\code{\link[=xr_grids]{xr_grids()}} lists it (either view)}
 
 \item{...}{unused}
 }
@@ -18,7 +20,8 @@
 a lazy \code{tbl_xarray}; \code{\link[dplyr:collect]{dplyr::collect()}} returns a tibble
 }
 \description{
-\code{tbl(con, from)} returns a lazy table over one variable: dplyr verbs
+\code{tbl(con, from)} returns a lazy table over one variable, or over a
+grid of variables: dplyr verbs
 accumulate, and no data are read until \code{\link[dplyr:collect]{dplyr::collect()}} (or a
 print, which shows a small preview). The verbs compile to a single
 Python statement, shown by \code{\link[dplyr:show_query]{dplyr::show_query()}} and run through
@@ -27,6 +30,27 @@ field names and probes coordinates, which needs Python, but reads no
 data.
 }
 \details{
+A grid is the set of variables on one set of dimensions (see
+\code{\link[=xr_grids]{xr_grids()}}), and a grid table has a column per member, as tidync's
+\code{hyper_tibble()} does: \code{tbl(con, c("sst", "ice"))} for some members,
+or \code{tbl(con, "time,zlev,lat,lon")} for a grid by its name. It compiles
+to a Dataset statement, \code{ds[['sst', 'ice']]}, and the verbs apply as
+they do to one variable, with these differences:
+\itemize{
+\item \code{select()} decides which members are read: the statement names the
+selected members, plus any a filter needs (which are dropped after
+it). It must name at least one member.
+\item the guard counts values, cells times members.
+\item printing previews at most \code{getOption("xrdbi.preview_members", 4)}
+members, since each is at least a chunk read.
+\item variables on different grids are refused, because a statement over
+both would repeat each value along the dimensions its variable
+lacks (a surface field across 37 pressure levels).
+}
+
+\code{\link[=xr_chunks]{xr_chunks()}} takes a lazy table too, and maps what collecting it
+would read: for a grid table, a row per member read and chunk.
+
 Supported verbs: \code{filter()}, \code{select()} (plain column names),
 \code{head()}, \code{collect()}, \code{show_query()}, and \code{as.data.frame()}.
 \code{filter()} takes \code{==}, \code{\%in\%}, \code{<}, \code{<=}, \code{>}, \code{>=}, \code{between()} and
@@ -85,10 +109,23 @@ collect(u)
 tbl(con, "2m_temperature") |>
   filter(time >= as.POSIXct("1980-01-01", tz = "UTC")) |>
   head(3) |> collect()
+
+## the surface grid: 262 members, of which select() reads three
+xr_grids(con)
+wind <- tbl(con, "time,latitude,longitude") |>
+  filter(time >= as.POSIXct("2020-01-01 00:00", tz = "UTC"),
+         time <= as.POSIXct("2020-01-01 05:00", tz = "UTC"),
+         latitude >= -43, latitude <= -42,
+         longitude >= 147, longitude <= 148) |>
+  select(time, latitude, longitude, `2m_temperature`,
+         `10m_u_component_of_wind`, `10m_v_component_of_wind`)
+show_query(wind)
+collect(wind)
+xr_chunks(wind)   # 18 chunks: 6 hours, 3 members
 }
 }
 \seealso{
 \link[=XarrayResult-class]{XarrayResult} for statements written in Python (and
-values passed with \code{params}); \code{\link[=xr_query]{xr_query()}}; the guard and preview
-options in \link{xrdbi-package}.
+values passed with \code{params}); \code{\link[=xr_query]{xr_query()}}; \code{\link[=xr_grids]{xr_grids()}} for the
+grids; the guard and preview options in \link{xrdbi-package}.
 }

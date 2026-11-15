@@ -59,6 +59,31 @@
   over NCI THREDDS) in place of placeholder names, replacing the
   README's icechunk example, whose repository no longer exists.
 
+## Grid tables
+
+* `tbl()` takes a grid: several data variables on one set of dimensions
+  (`tbl(con, c("sst", "ice"))`), or a grid by name
+  (`tbl(con, "time,zlev,lat,lon")`). A grid table has a column per
+  member, as tidync's `hyper_tibble()` does, and compiles to a Dataset
+  statement (`ds[['sst', 'ice']]`). Its `select()` decides which members
+  are read, plus any a filter needs; the guard counts values (cells times
+  members); printing previews at most `getOption("xrdbi.preview_members",
+  4)` members. Variables on different grids are refused, since a
+  statement over both would repeat values along the dimensions one
+  lacks. A one-variable `tbl()` is unchanged.
+
+* New `xr_grids()` lists the grids. The `"meaning"` view (the default)
+  groups data variables by their decoded dimensions as a set, with the
+  coordinates that belong to each grid; the `"storage"` view groups every
+  stored array by its stored dimensions in order, keeping the character
+  dimension of decoded strings, and so finds the grids tidync does (16 in
+  an Argo profile file, where the meaning view has 5).
+
+* `xr_chunks()` takes a lazy `tbl()` and maps what collecting it reads:
+  for a grid table, a row per member read and chunk.
+
+These come from a play kit tried on Argo, OISST and ERA5 before the move.
+
 ## Chunk maps
 
 * `xr_chunks()` maps start with the chunk key of a byterefs table:
@@ -68,8 +93,8 @@
   a chunk map joins to them, one array at a time, for what they record
   of each chunk: presence, path and byte range (checked against zaro on
   zarr v2 and sharded v3 stores). Shard, dask
-  and whole-variable maps have no `dim_` keys. This is step 1 of the
-  byterefs/necker "one centre" notes: one plan vocabulary.
+  and whole-variable maps have no `dim_` keys: a first step to one plan
+  vocabulary across array readers.
 
 * `xr_chunks()` takes a Dataset statement (`ds[['sst', 'ice']].sel(...)`)
   and maps each data variable under the one selection, a row per variable

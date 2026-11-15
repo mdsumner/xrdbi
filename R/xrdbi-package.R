@@ -35,7 +35,9 @@
 #'   statement from a structured selection.
 #' * **Query with dplyr**: [tbl()][tbl_xarray] gives a lazy table for
 #'   `filter()`, `select()`, `head()` and `collect()`, compiled to a
-#'   statement that [dplyr::show_query()] prints.
+#'   statement that [dplyr::show_query()] prints. A table is one
+#'   variable, or a grid of them (the variables on one set of
+#'   dimensions, a column each), which [xr_grids()] lists.
 #' * **Read a whole variable**: [dbReadTable()][dbReadTable,XarrayConnection,character-method].
 #' * **Render other ways**: [xr_raster()] gives a 2-D or 3-D slab in
 #'   gdalraster's in-memory raster form; [xr_chunks()] maps the storage
@@ -60,6 +62,8 @@
 #' * `xrdbi.print_preview` (default `TRUE`): `FALSE` prints a
 #'   [tbl_xarray]'s compiled statement without the preview's data read
 #'   (compiling still reads coordinates).
+#' * `xrdbi.preview_members` (default `4`): the most members of a grid
+#'   [tbl_xarray] a print previews, each at most a chunk read.
 #'
 #' @section R packages used when installed:
 #' * wk: geometry. Vector cube geometry arrives as [wk::wkb()] (WKT

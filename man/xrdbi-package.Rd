@@ -53,7 +53,9 @@ rebind with \code{dbBind()} (\link[=XarrayResult-class]{XarrayResult}). \code{\l
 statement from a structured selection.
 \item \strong{Query with dplyr}: \link[=tbl_xarray]{tbl()} gives a lazy table for
 \code{filter()}, \code{select()}, \code{head()} and \code{collect()}, compiled to a
-statement that \code{\link[dplyr:show_query]{dplyr::show_query()}} prints.
+statement that \code{\link[dplyr:show_query]{dplyr::show_query()}} prints. A table is one
+variable, or a grid of them (the variables on one set of
+dimensions, a column each), which \code{\link[=xr_grids]{xr_grids()}} lists.
 \item \strong{Read a whole variable}: \link[=dbReadTable,XarrayConnection,character-method]{dbReadTable()}.
 \item \strong{Render other ways}: \code{\link[=xr_raster]{xr_raster()}} gives a 2-D or 3-D slab in
 gdalraster's in-memory raster form; \code{\link[=xr_chunks]{xr_chunks()}} maps the storage
@@ -82,6 +84,8 @@ previews, reading at most one chunk.
 \item \code{xrdbi.print_preview} (default \code{TRUE}): \code{FALSE} prints a
 \link{tbl_xarray}'s compiled statement without the preview's data read
 (compiling still reads coordinates).
+\item \code{xrdbi.preview_members} (default \code{4}): the most members of a grid
+\link{tbl_xarray} a print previews, each at most a chunk read.
 }
 }
 

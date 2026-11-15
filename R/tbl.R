@@ -1,12 +1,32 @@
-#' A lazy dplyr table over an xarray variable
+#' A lazy dplyr table over an xarray variable or grid
 #'
-#' `tbl(con, from)` returns a lazy table over one variable: dplyr verbs
+#' `tbl(con, from)` returns a lazy table over one variable, or over a
+#' grid of variables: dplyr verbs
 #' accumulate, and no data are read until [dplyr::collect()] (or a
 #' print, which shows a small preview). The verbs compile to a single
 #' Python statement, shown by [dplyr::show_query()] and run through
 #' [DBI::dbGetQuery()] like any other statement. Building it checks
 #' field names and probes coordinates, which needs Python, but reads no
 #' data.
+#'
+#' A grid is the set of variables on one set of dimensions (see
+#' [xr_grids()]), and a grid table has a column per member, as tidync's
+#' `hyper_tibble()` does: `tbl(con, c("sst", "ice"))` for some members,
+#' or `tbl(con, "time,zlev,lat,lon")` for a grid by its name. It compiles
+#' to a Dataset statement, `ds[['sst', 'ice']]`, and the verbs apply as
+#' they do to one variable, with these differences:
+#' * `select()` decides which members are read: the statement names the
+#'   selected members, plus any a filter needs (which are dropped after
+#'   it). It must name at least one member.
+#' * the guard counts values, cells times members.
+#' * printing previews at most `getOption("xrdbi.preview_members", 4)`
+#'   members, since each is at least a chunk read.
+#' * variables on different grids are refused, because a statement over
+#'   both would repeat each value along the dimensions its variable
+#'   lacks (a surface field across 37 pressure levels).
+#'
+#' [xr_chunks()] takes a lazy table too, and maps what collecting it
+#' would read: for a grid table, a row per member read and chunk.
 #'
 #' Supported verbs: `filter()`, `select()` (plain column names),
 #' `head()`, `collect()`, `show_query()`, and `as.data.frame()`.
@@ -49,12 +69,14 @@
 #'   coordinates
 #'
 #' @param src an XarrayConnection
-#' @param from a variable name (a data variable, or a coordinate)
+#' @param from a variable name (a data variable, or a coordinate);
+#'   several data variables on one grid; or the name of a grid, as
+#'   [xr_grids()] lists it (either view)
 #' @param ... unused
 #' @return a lazy `tbl_xarray`; [dplyr::collect()] returns a tibble
 #' @seealso [XarrayResult-class] for statements written in Python (and
-#'   values passed with `params`); [xr_query()]; the guard and preview
-#'   options in [xrdbi-package].
+#'   values passed with `params`); [xr_query()]; [xr_grids()] for the
+#'   grids; the guard and preview options in [xrdbi-package].
 #' @examples
 #' \dontrun{
 #' ## needs a Python environment with xarray (and here zarr, gcsfs)
@@ -72,6 +94,19 @@
 #' tbl(con, "2m_temperature") |>
 #'   filter(time >= as.POSIXct("1980-01-01", tz = "UTC")) |>
 #'   head(3) |> collect()
+#'
+#' ## the surface grid: 262 members, of which select() reads three
+#' xr_grids(con)
+#' wind <- tbl(con, "time,latitude,longitude") |>
+#'   filter(time >= as.POSIXct("2020-01-01 00:00", tz = "UTC"),
+#'          time <= as.POSIXct("2020-01-01 05:00", tz = "UTC"),
+#'          latitude >= -43, latitude <= -42,
+#'          longitude >= 147, longitude <= 148) |>
+#'   select(time, latitude, longitude, `2m_temperature`,
+#'          `10m_u_component_of_wind`, `10m_v_component_of_wind`)
+#' show_query(wind)
+#' collect(wind)
+#' xr_chunks(wind)   # 18 chunks: 6 hours, 3 members
 #' }
 #' @name tbl_xarray
 NULL
@@ -79,18 +114,43 @@ NULL
 #' @rdname tbl_xarray
 #' @export
 tbl.XarrayConnection <- function(src, from, ...) {
-  stopifnot(is.character(from), length(from) == 1L)
-  if (!dbExistsTable(src, from)) {
-    stop("no such variable: ", from, "; see dbListTables()", call. = FALSE)
+  stopifnot(is.character(from), length(from) >= 1L, !anyNA(from))
+  if (length(from) == 1L && dbExistsTable(src, from)) {
+    return(new_tbl_xarray(src, from))
   }
-  new_tbl_xarray(src, from)
+  g <- resolve_grid(src, from)
+  new_tbl_xarray(src, g$members, grid = g$grid, fields = g$fields)
 }
 
+## `var` is the variable, or for a grid table (`grid` set) its members;
+## `fields` are a grid table's fields (one variable's come from
+## dbListFields())
 new_tbl_xarray <- function(con, var, preds = list(), cols = NULL,
-                           head_n = NULL) {
+                           head_n = NULL, grid = NULL, fields = NULL) {
   structure(
-    list(con = con, var = var, preds = preds, cols = cols, head_n = head_n),
+    list(con = con, var = var, preds = preds, cols = cols, head_n = head_n,
+         grid = grid, fields = fields),
     class = "tbl_xarray")
+}
+
+tbl_fields <- function(x) {
+  if (!is.null(x$fields)) x$fields else dbListFields(x$con, x$var)
+}
+
+## the members a grid table's statement names: after select(), the
+## selected ones and any a filter needs; a one-variable table's variable
+tbl_members <- function(x) {
+  if (is.null(x$grid) || is.null(x$cols)) return(x$var)
+  need <- c(x$cols, vapply(x$preds, `[[`, "", "var"))
+  x$var[x$var %in% need]
+}
+
+## the statement's first step: the variable, or the grid's members as a
+## Dataset
+tbl_root <- function(x) {
+  if (is.null(x$grid)) return(paste0("ds[", py_repr_string(x$var), "]"))
+  paste0("ds[[", paste(vapply(tbl_members(x), py_repr_string, ""),
+                       collapse = ", "), "]]")
 }
 
 ## ---- verbs -----------------------------------------------------------
@@ -104,7 +164,7 @@ filter.tbl_xarray <- function(.data, ..., .preserve = FALSE) {
                                   rlang::quo_get_env(q)))
   }
   if (!is.null(.data$con)) {
-    fields <- dbListFields(.data$con, .data$var)
+    fields <- tbl_fields(.data)
     bad <- setdiff(vapply(new, `[[`, "", "var"), fields)
     if (length(bad)) {
       stop("unknown field(s) in filter: ", paste(bad, collapse = ", "),
@@ -119,12 +179,17 @@ filter.tbl_xarray <- function(.data, ..., .preserve = FALSE) {
 select.tbl_xarray <- function(.data, ...) {
   cols <- vapply(rlang::ensyms(...), rlang::as_string, "")
   if (!is.null(.data$con)) {
-    fields <- dbListFields(.data$con, .data$var)
+    fields <- tbl_fields(.data)
     bad <- setdiff(cols, fields)
     if (length(bad)) {
       stop("unknown field(s) in select: ", paste(bad, collapse = ", "),
            call. = FALSE)
     }
+  }
+  if (!is.null(.data$grid) && !any(cols %in% .data$var)) {
+    stop("select at least one member of the grid: ",
+         paste(utils::head(.data$var, 6L), collapse = ", "),
+         if (length(.data$var) > 6L) ", ...", call. = FALSE)
   }
   .data$cols <- cols
   .data
@@ -145,17 +210,28 @@ collect_impl <- function(x, max_cells = getOption("xrdbi.max_cells", 1e7),
   ## size the guard on what will be read: the xarray part of the
   ## statement (strict trims, the coordinate block and the head() block
   ## included), whatever a pandas stage does after
-  sized <- cc$xarray
-  n <- py_to_r(import_builtins(convert = FALSE)$eval(
-    paste0("float((", sized, ").size)"), tbl_scope(con)))  # see guard_cells
+  ## a grid table's Dataset has no .size: count its values, cells times
+  ## members
+  n <- tbl_values(con, cc$xarray)
   if (is.finite(max_cells) && n > max_cells && !isTRUE(force)) {
+    what <- if (is.null(x$grid)) "cells" else "values (cells times members)"
+    more <- if (is.null(x$grid)) "" else "select fewer members, "
     stop(sprintf(paste0(
-      "collect would materialize %s cells, over the guard (%s); constrain ",
+      "collect would materialize %s %s, over the guard (%s); %sconstrain ",
       "more dimensions (e.g. a time range), raise ",
       "options(xrdbi.max_cells=), or collect(force = TRUE)"),
-      fmt_count(n), fmt_count(max_cells)), call. = FALSE)
+      fmt_count(n), what, fmt_count(max_cells), more), call. = FALSE)
   }
   run_tbl(con, cc, x)
+}
+
+## values a statement's xarray object holds: a DataArray's size, or the
+## sum over a Dataset's data variables (float, see guard_cells)
+tbl_values <- function(con, statement) {
+  py_to_r(import_builtins(convert = FALSE)$eval(paste0(
+    "(lambda o: float(sum(v.size for v in o.data_vars.values())) ",
+    "if hasattr(o, 'data_vars') else float(o.size))(", statement, ")"),
+    tbl_scope(con)))
 }
 
 ## fetch a compiled tbl. A pandas-stage statement already applied
@@ -200,9 +276,23 @@ show_query.tbl_xarray <- function(x, ...) {
 
 #' @export
 print.tbl_xarray <- function(x, ..., n = getOption("xrdbi.print_n", 6L)) {
-  cat("<tbl_xarray> ", x$var, "\n", sep = "")
+  rm <- tbl_members(x)
+  if (is.null(x$grid)) {
+    cat("<tbl_xarray> ", x$var, "\n", sep = "")
+  } else {
+    cat("<tbl_xarray> grid ", x$grid, ": ", length(x$var), " member",
+        if (length(x$var) != 1L) "s", ", reading ", length(rm), "\n", sep = "")
+  }
   cc <- tbl_compiled(x)
-  cat("  python: ", cc$statement, "\n", sep = "")
+  shown <- cc$statement
+  if (!is.null(x$grid) && length(rm) > 6L) {
+    ## a long member list is unreadable here: show_query() prints it whole
+    short <- paste0("ds[[", paste(vapply(rm[1:3], py_repr_string, ""),
+                                  collapse = ", "),
+                    ", ... ", length(rm) - 3L, " more]]")
+    shown <- sub(tbl_root(x), short, shown, fixed = TRUE)
+  }
+  cat("  python: ", shown, "\n", sep = "")
   steps <- tbl_r_steps(x, cc$pandas)
   if (length(steps)) cat("  then R: ", steps, "\n", sep = "")
   ok <- FALSE
@@ -216,12 +306,17 @@ print.tbl_xarray <- function(x, ..., n = getOption("xrdbi.print_n", 6L)) {
         cat("# note: filters removed all previewed cells;",
             "the full result may still have rows\n")
       }
+      if (pv$shown < length(rm)) {
+        cat("# preview shows ", pv$shown, " of ", length(rm), " members; ",
+            "options(xrdbi.preview_members=) for more\n", sep = "")
+      }
       TRUE
     }, error = function(e) FALSE)
   }
   if (ok) {
-    cat("# lazy preview of the first cells (reads at most one chunk);",
-        "collect() for the full result\n")
+    cat("# lazy preview of the first cells (reads at most one chunk",
+        if (!is.null(x$grid)) " per member", "); ",
+        "collect() for the full result\n", sep = "")
   } else {
     cat("  (lazy; collect() to render)\n")
   }
@@ -235,6 +330,17 @@ print.tbl_xarray <- function(x, ..., n = getOption("xrdbi.print_n", 6L)) {
 ## survive on a filtered corner.
 tbl_preview <- function(x, n = 6L) {
   con <- x$con
+  ## a grid table previews its first members only: each is at least a
+  ## chunk read (262 of them on ERA5's surface grid). Members a filter
+  ## needs are read whatever the cap
+  rm <- tbl_members(x)
+  k <- max(1L, as.integer(getOption("xrdbi.preview_members", 4L)))
+  if (!is.null(x$grid) && length(rm) > k) {
+    keep <- rm[seq_len(k)]
+    x$cols <- if (is.null(x$cols)) c(setdiff(x$fields, x$var), keep) else
+      setdiff(x$cols, setdiff(rm, keep))
+  }
+  shown <- length(tbl_members(x))
   ctx <- tbl_context(x)
   hull <- compile_tbl(x, dims = ctx$dims, descending = ctx$descending,
                       stage = "hull")
@@ -253,7 +359,7 @@ tbl_preview <- function(x, n = 6L) {
   x2$head_n <- as.integer(min(c(n, x$head_n[x$head_n >= 0L])))
   cc <- tbl_compile(x2, ctx, clamp = clamp, block = FALSE)
   list(df = run_tbl(con, cc, x2), sizes_line = sizes_line,
-       residual = grepl(".query(", cc$statement, fixed = TRUE))
+       residual = grepl(".query(", cc$statement, fixed = TRUE), shown = shown)
 }
 
 ## compile with a live direction probe when connected, placeholders not
@@ -273,18 +379,20 @@ tbl_compiled <- function(x) {
 ## the filtered dims are DESCENDING
 tbl_context <- function(x) {
   con <- x$con
-  dims <- tbl_dims(con, x$var)
+  root <- tbl_root(x)
+  dims <- tbl_dims(con, root)
   hull_dims <- intersect(unique(vapply(x$preds, `[[`, "", "var")), dims)
   descending <- hull_dims[vapply(hull_dims, dim_is_descending,
                                  logical(1), con = con)]
-  list(dims = dims, descending = descending, coords = tbl_coords(con, x$var))
+  list(dims = dims, descending = descending, coords = tbl_coords(con, root))
 }
 
-## a variable's non-dimension coordinates that have dimensions
-tbl_coords <- function(con, var) {
+## the non-dimension coordinates that have dimensions, of the object a
+## root expression (`ds['sst']`, `ds[['sst', 'ice']]`) gives
+tbl_coords <- function(con, root) {
   bt <- import_builtins(convert = FALSE)
   out <- py_to_r(bt$eval(paste0(
-    "{c: list(v.coords[c].dims) for v in [ds[", py_repr_string(var), "]] ",
+    "{c: list(v.coords[c].dims) for v in [", root, "] ",
     "for c in v.coords if c not in v.dims and v.coords[c].ndim >= 1}"),
     tbl_scope(con)))
   if (!length(out)) list() else out
@@ -419,7 +527,7 @@ compile_tbl <- function(x, dims, descending, stage = "full", clamp = NULL,
                         prefix = NULL, coord_block = NULL) {
   sp <- split_preds(x, dims, descending)
 
-  statement <- paste0("ds[", py_repr_string(x$var), "]")
+  statement <- tbl_root(x)
   if (length(sp$sel_args)) {
     statement <- paste0(statement, ".sel(",
                         paste(sp$sel_args, collapse = ", "), ")")
@@ -559,11 +667,12 @@ q_literal <- function(x) {
 
 ## ---- connection introspection (metadata only, no reads) --------------
 
-tbl_dims <- function(con, var) {
+## the dims of the object a root expression gives, in its order (for a
+## Dataset, the order its long form uses)
+tbl_dims <- function(con, root) {
   bt <- import_builtins(convert = FALSE)
-  scope <- py_dict("ds", list(conn_ds(con)), convert = FALSE)
-  as.character(py_to_r(bt$eval(
-    paste0("list(ds[", py_repr_string(var), "].dims)"), scope)))
+  as.character(py_to_r(bt$eval(paste0("list((", root, ").dims)"),
+                               tbl_scope(con))))
 }
 
 dim_is_descending <- function(d, con) {
