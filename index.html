@@ -21,7 +21,7 @@
 
     <a class="navbar-brand me-2" href="index.html">xrdbi</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.1.9034</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.1.9037</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -77,7 +77,7 @@
 <li>fields are a variable’s dimensions and coordinates, then the variable itself</li>
 <li>a statement is a Python expression over <code>ds</code>, and its result arrives as tidy rows, one per cell</li>
 </ul>
-<p>dplyr verbs compile to the same statements, <code><a href="reference/xr_raster.html">xr_raster()</a></code> renders a slab as a raster, and <code><a href="reference/xr_chunks.html">xr_chunks()</a></code> maps the storage chunks a selection touches. Anything xarray can open is in reach: netCDF and HDF5 files, zarr in the cloud, virtual and icechunk stores, and, through the gdalxarray engine, anything GDAL reads.</p>
+<p>dplyr verbs compile to the same statements, over one variable or a grid of variables that share dimensions, <code><a href="reference/xr_raster.html">xr_raster()</a></code> renders a slab as a raster, and <code><a href="reference/xr_chunks.html">xr_chunks()</a></code> maps the storage chunks a selection touches. Anything xarray can open is in reach: netCDF and HDF5 files, zarr in the cloud, virtual and icechunk stores, and, through the gdalxarray engine, anything GDAL reads.</p>
 <p>Documentation: <a href="https://mdsumner.github.io/xrdbi/" class="uri">https://mdsumner.github.io/xrdbi/</a></p>
 <div class="section level2">
 <h2 id="installation">Installation<a class="anchor" aria-label="anchor" href="#installation"></a>
@@ -154,7 +154,7 @@
 </h2>
 <p><a href="https://mdsumner.github.io/xrdbi/articles/xrdbi.html">Get started</a> works through connections, statements, parameters, dplyr and rasters on a small bundled file. Then:</p>
 <ul>
-<li>Querying: <a href="https://mdsumner.github.io/xrdbi/articles/dplyr.html">Querying with dplyr</a> (how each verb compiles, and what gets read), <a href="https://mdsumner.github.io/xrdbi/articles/parameters.html">Parameters</a> (R values into statements by name), <a href="https://mdsumner.github.io/xrdbi/articles/rendering.html">From arrays to rows</a> (the shape and types of results, and when work happens) and <a href="https://mdsumner.github.io/xrdbi/articles/data-sources.html">Data sources</a> (netCDF over HTTPS, many files, zarr on Google Cloud and S3, GDAL rasters and VRTs, icechunk)</li>
+<li>Querying: <a href="https://mdsumner.github.io/xrdbi/articles/dplyr.html">Querying with dplyr</a> (how each verb compiles, what gets read, and tables over grids), <a href="https://mdsumner.github.io/xrdbi/articles/parameters.html">Parameters</a> (R values into statements by name), <a href="https://mdsumner.github.io/xrdbi/articles/rendering.html">From arrays to rows</a> (the shape and types of results, and when work happens) and <a href="https://mdsumner.github.io/xrdbi/articles/data-sources.html">Data sources</a> (netCDF over HTTPS, many files, zarr on Google Cloud and S3, GDAL rasters and VRTs, icechunk)</li>
 <li>Grids and geometry: <a href="https://mdsumner.github.io/xrdbi/articles/rasters.html">Rasters</a>, <a href="https://mdsumner.github.io/xrdbi/articles/chunk-maps.html">Chunk maps</a> and <a href="https://mdsumner.github.io/xrdbi/articles/curvilinear.html">Curvilinear grids and vector cubes</a>
 </li>
 <li>

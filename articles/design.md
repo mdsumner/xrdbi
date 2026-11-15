@@ -14,6 +14,18 @@ gives the vocabulary:
   the variable itself: the columns of its rows
 - a statement is a Python expression over `ds` and `xr`
 
+The dplyr layer adds grids: the variables on one set of dimensions, read
+as one table with a column each, as tidync reads them. DBI’s tables stay
+variables;
+[`xr_grids()`](https://mdsumner.github.io/xrdbi/reference/xr_grids.md)
+lists the grids and
+[`tbl()`](https://dplyr.tidyverse.org/reference/tbl.html) takes their
+names. Grid tables are where the byterefs plan vocabulary meets xrdbi:
+members of a grid share its selection, and
+[`xr_chunks()`](https://mdsumner.github.io/xrdbi/reference/xr_chunks.md)
+maps that selection to chunk rows keyed `dim_0 ..`, as byterefs tables
+are.
+
 Nothing of xarray is ported or wrapped: xarray opens the data, selects
 it, and computes on it, with every engine and index it has. xrdbi adds
 the mapping to rows, and the guards.

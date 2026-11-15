@@ -7,7 +7,10 @@ two dimensions (y and x, as for
 [`xr_raster()`](https://mdsumner.github.io/xrdbi/reference/xr_raster.md)).
 Run it on the whole variable (`"ds.sst"`) to see its chunk grid, or on a
 selection (`"ds.sst.sel(lat=slice(-60, -50))"`) to see which chunks
-reading it would touch.
+reading it would touch. A Dataset statement
+(`"ds[['sst', 'ice']].sel(lat=slice(-60, -50))"`) maps every data
+variable in it under the one selection, with an `array` column to say
+whose chunk each row is.
 
 ## Usage
 
@@ -26,12 +29,15 @@ xr_chunks(
 
 - x:
 
-  an XarrayResult, or an XarrayConnection (with `statement`)
+  an XarrayResult, an XarrayConnection (with `statement`), or a lazy
+  [tbl()](https://mdsumner.github.io/xrdbi/reference/tbl_xarray.md),
+  whose map is of what collecting it would read (for a grid table, every
+  member it reads)
 
 - statement:
 
-  a Python expression selecting one stored variable, when `x` is a
-  connection
+  a Python expression selecting a stored variable, or a Dataset of them,
+  when `x` is a connection
 
 - params:
 
@@ -58,7 +64,12 @@ xr_chunks(
 ## Value
 
 a data frame, one row per chunk touched, chunks in C order (the last
-dimension fastest). For each dimension `d`: `d_chunk`, the chunk's index
+dimension fastest), variable by variable for a Dataset. First `array`,
+the stored variable's name, and, when the shapes are storage chunks (not
+shards, dask chunks or one whole variable), the byterefs chunk key
+`dim_0 .. dim_{n-1}` (integer). In a Dataset, a variable has missing
+values in the columns of dimensions it does not have, and in the keys
+beyond its rank. For each dimension `d`: `d_chunk`, the chunk's index
 along `d`; `d_start` and `d_stop`, its 0-based index range, stop
 exclusive (as in `isel(d=slice(start, stop))`); and, when `d` has a
 coordinate, `d_min` and `d_max`, its extent: cell edges for a numeric
@@ -77,7 +88,8 @@ coordinates; cell centres, so half a cell inside the edges, and not
 split at the antimeridian), and `geometry` is that envelope in OGC:CRS84
 when the dimensions have no 1-D coordinates of their own. Attribute
 `chunking` says where the shapes came from: `"storage"`, `"shards"`,
-`"dask"` or `"none"`.
+`"dask"` or `"none"`; for a Dataset whose variables differ, one value
+per variable, named by variable.
 
 ## Details
 
@@ -86,10 +98,19 @@ which xarray's backends (zarr, netCDF via netCDF4 or h5netcdf, GDAL via
 gdalxarray, classic and multidimensional) set from the storage layout.
 Without it, a dask-backed selection maps its own dask chunks; otherwise
 the variable is one chunk. The selection is placed on the source grid by
-its coordinate values, so it must be an orthogonal selection of one
-stored variable (`sel()`/`isel()` by labels, slices, or lists);
-pointwise selections onto a new dimension are not supported. Nothing but
+its coordinate values, so it must be an orthogonal selection of stored
+variables (`sel()`/`isel()` by labels, slices, or lists); pointwise
+selections onto a new dimension are not supported. Nothing but
 coordinates is read.
+
+Storage chunk maps carry the chunk key of the
+[byterefs](https://github.com/byterefs/spec) table, `dim_0`, `dim_1`,
+...: the chunk's 0-based position along each stored dimension, in the
+variable's dimension order. A byterefs view `refs_<array>` and the plans
+of other readers (such as zaro's `zaro_plan()`) are keyed the same way,
+one array at a time, so a chunk map joins to them on `dim_0 ..` for what
+they record of each chunk (presence, path, byte range), which
+`xr_chunks()` does not read.
 
 ## See also
 
@@ -112,6 +133,13 @@ con <- dbConnect(xarray(),
 ch <- xr_chunks(con,
   "ds['2m_temperature'].sel(time=slice('1980-01-01', '1980-01-31'))")
 nrow(ch)
+
+## two variables of one grid under one selection: a row per variable
+## and chunk, keyed by array and dim_0 .. as byterefs tables are
+ch <- xr_chunks(con, paste0(
+  "ds[['2m_temperature', '10m_u_component_of_wind']]",
+  ".sel(time=slice('1980-01-01T00', '1980-01-01T05'))"))
+ch[, c("array", "dim_0", "dim_1", "dim_2", "time_min", "cells")]
 
 ## a GeoTIFF's block grid (gdalxarray needs the GDAL Python bindings;
 ## multidim = FALSE opens it as a classic raster: one variable,

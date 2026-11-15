@@ -12,7 +12,8 @@ a handle to it:
 - a statement is a Python expression over `ds`, and its result arrives
   as tidy rows, one per cell
 
-dplyr verbs compile to the same statements,
+dplyr verbs compile to the same statements, over one variable or a grid
+of variables that share dimensions,
 [`xr_raster()`](https://mdsumner.github.io/xrdbi/reference/xr_raster.md)
 renders a slab as a raster, and
 [`xr_chunks()`](https://mdsumner.github.io/xrdbi/reference/xr_chunks.md)
@@ -130,7 +131,7 @@ a small bundled file. Then:
 
 - Querying: [Querying with
   dplyr](https://mdsumner.github.io/xrdbi/articles/dplyr.html) (how each
-  verb compiles, and what gets read),
+  verb compiles, what gets read, and tables over grids),
   [Parameters](https://mdsumner.github.io/xrdbi/articles/parameters.html)
   (R values into statements by name), [From arrays to
   rows](https://mdsumner.github.io/xrdbi/articles/rendering.html) (the

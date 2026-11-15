@@ -5,15 +5,19 @@ range and coordinate extent along every dimension, and a rectangle
 over the last two dimensions (y and x, as for xr_raster()). Run it
 on the whole variable (&quot;ds.sst&quot;) to see its chunk grid, or on a
 selection (&quot;ds.sst.sel(lat=slice(-60, -50))&quot;) to see which chunks
-reading it
-would touch."><meta property="og:description" content="The block structure of a stored variable as a table: one row per
+reading it would touch. A Dataset statement
+(&quot;ds[['sst', 'ice']].sel(lat=slice(-60, -50))&quot;) maps every data
+variable in it under the one selection, with an array column to say
+whose chunk each row is."><meta property="og:description" content="The block structure of a stored variable as a table: one row per
 storage chunk that the selection touches, with each chunk's index
 range and coordinate extent along every dimension, and a rectangle
 over the last two dimensions (y and x, as for xr_raster()). Run it
 on the whole variable (&quot;ds.sst&quot;) to see its chunk grid, or on a
 selection (&quot;ds.sst.sel(lat=slice(-60, -50))&quot;) to see which chunks
-reading it
-would touch."></head><body>
+reading it would touch. A Dataset statement
+(&quot;ds[['sst', 'ice']].sel(lat=slice(-60, -50))&quot;) maps every data
+variable in it under the one selection, with an array column to say
+whose chunk each row is."></head><body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
 
 
@@ -21,7 +25,7 @@ would touch."></head><body>
 
     <a class="navbar-brand me-2" href="../index.html">xrdbi</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.1.9034</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.1.9037</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -75,8 +79,10 @@ range and coordinate extent along every dimension, and a rectangle
 over the last two dimensions (y and x, as for <code><a href="xr_raster.html">xr_raster()</a></code>). Run it
 on the whole variable (<code>"ds.sst"</code>) to see its chunk grid, or on a
 selection (<code>"ds.sst.sel(lat=slice(-60, -50))"</code>) to see which chunks
-reading it
-would touch.</p>
+reading it would touch. A Dataset statement
+(<code>"ds[['sst', 'ice']].sel(lat=slice(-60, -50))"</code>) maps every data
+variable in it under the one selection, with an <code>array</code> column to say
+whose chunk each row is.</p>
     </div>
 
     <div class="section level2">
@@ -96,12 +102,14 @@ would touch.</p>
 
 
 <dl><dt id="arg-x">x<a class="anchor" aria-label="anchor" href="#arg-x"></a></dt>
-<dd><p>an XarrayResult, or an XarrayConnection (with <code>statement</code>)</p></dd>
+<dd><p>an XarrayResult, an XarrayConnection (with <code>statement</code>), or
+a lazy <a href="tbl_xarray.html">tbl()</a>, whose map is of what collecting it would
+read (for a grid table, every member it reads)</p></dd>
 
 
 <dt id="arg-statement">statement<a class="anchor" aria-label="anchor" href="#arg-statement"></a></dt>
-<dd><p>a Python expression selecting one stored variable,
-when <code>x</code> is a connection</p></dd>
+<dd><p>a Python expression selecting a stored variable, or
+a Dataset of them, when <code>x</code> is a connection</p></dd>
 
 
 <dt id="arg-params">params<a class="anchor" aria-label="anchor" href="#arg-params"></a></dt>
@@ -129,7 +137,13 @@ lives in.</p></dd>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
     <p>a data frame, one row per chunk touched, chunks in C order
-(the last dimension fastest). For each dimension <code>d</code>: <code>d_chunk</code>, the
+(the last dimension fastest), variable by variable for a Dataset.
+First <code>array</code>, the stored variable's name, and, when the shapes are
+storage chunks (not shards, dask chunks or one whole variable), the
+byterefs chunk key <code>dim_0 .. dim_{n-1}</code> (integer). In a Dataset, a
+variable has missing values in the columns of dimensions it does
+not have, and in the keys beyond its rank. For each dimension <code>d</code>:
+<code>d_chunk</code>, the
 chunk's index along <code>d</code>; <code>d_start</code> and <code>d_stop</code>, its 0-based index
 range, stop exclusive (as in <code>isel(d=slice(start, stop))</code>); and,
 when <code>d</code> has a coordinate, <code>d_min</code> and <code>d_max</code>, its extent: cell
@@ -146,8 +160,9 @@ also gets the envelope of its block of those values (<code>lon_min</code>,
 centres, so half a cell inside the edges, and not split at the
 antimeridian), and <code>geometry</code> is that envelope in OGC:CRS84 when
 the dimensions have no 1-D coordinates of their own. Attribute
-<code>chunking</code> says where
-the shapes came from: <code>"storage"</code>, <code>"shards"</code>, <code>"dask"</code> or <code>"none"</code>.</p>
+<code>chunking</code> says where the shapes came from: <code>"storage"</code>,
+<code>"shards"</code>, <code>"dask"</code> or <code>"none"</code>; for a Dataset whose variables
+differ, one value per variable, named by variable.</p>
     </div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
@@ -157,9 +172,17 @@ via gdalxarray, classic and multidimensional) set from the storage
 layout. Without it, a dask-backed selection maps its own dask chunks;
 otherwise the variable is one chunk. The selection is placed on the
 source grid by its coordinate values, so it must be an orthogonal
-selection of one stored variable (<code>sel()</code>/<code>isel()</code> by labels,
-slices, or lists); pointwise selections onto a new dimension are not
+selection of stored variables (<code>sel()</code>/<code>isel()</code> by labels, slices,
+or lists); pointwise selections onto a new dimension are not
 supported. Nothing but coordinates is read.</p>
+<p>Storage chunk maps carry the chunk key of the
+<a href="https://github.com/byterefs/spec" class="external-link">byterefs</a> table, <code>dim_0</code>,
+<code>dim_1</code>, ...: the chunk's 0-based position along each stored
+dimension, in the variable's dimension order. A byterefs view
+<code>refs_&lt;array&gt;</code> and the plans of other readers (such as zaro's
+<code>zaro_plan()</code>) are keyed the same way, one array at a time, so a chunk
+map joins to them on <code>dim_0 ..</code> for what they record of each chunk
+(presence, path, byte range), which <code>xr_chunks()</code> does not read.</p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
@@ -178,6 +201,13 @@ statements and <code>params</code>; <a href="xrdbi-package.html">xrdbi-package</
 <span class="r-in"><span><span class="va">ch</span> <span class="op">&lt;-</span> <span class="fu">xr_chunks</span><span class="op">(</span><span class="va">con</span>,</span></span>
 <span class="r-in"><span>  <span class="st">"ds['2m_temperature'].sel(time=slice('1980-01-01', '1980-01-31'))"</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">ch</span><span class="op">)</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co">## two variables of one grid under one selection: a row per variable</span></span></span>
+<span class="r-in"><span><span class="co">## and chunk, keyed by array and dim_0 .. as byterefs tables are</span></span></span>
+<span class="r-in"><span><span class="va">ch</span> <span class="op">&lt;-</span> <span class="fu">xr_chunks</span><span class="op">(</span><span class="va">con</span>, <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span></span></span>
+<span class="r-in"><span>  <span class="st">"ds[['2m_temperature', '10m_u_component_of_wind']]"</span>,</span></span>
+<span class="r-in"><span>  <span class="st">".sel(time=slice('1980-01-01T00', '1980-01-01T05'))"</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">ch</span><span class="op">[</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"array"</span>, <span class="st">"dim_0"</span>, <span class="st">"dim_1"</span>, <span class="st">"dim_2"</span>, <span class="st">"time_min"</span>, <span class="st">"cells"</span><span class="op">)</span><span class="op">]</span></span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co">## a GeoTIFF's block grid (gdalxarray needs the GDAL Python bindings;</span></span></span>
 <span class="r-in"><span><span class="co">## multidim = FALSE opens it as a classic raster: one variable,</span></span></span>

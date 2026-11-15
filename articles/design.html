@@ -19,7 +19,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">xrdbi</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.1.9034</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.1.9037</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -97,6 +97,13 @@ the variable itself: the columns of its rows</li>
 <code>xr</code>
 </li>
 </ul>
+<p>The dplyr layer adds grids: the variables on one set of dimensions,
+read as one table with a column each, as tidync reads them. DBI’s tables
+stay variables; <code><a href="../reference/xr_grids.html">xr_grids()</a></code> lists the grids and
+<code><a href="https://dplyr.tidyverse.org/reference/tbl.html" class="external-link">tbl()</a></code> takes their names. Grid tables are where the byterefs
+plan vocabulary meets xrdbi: members of a grid share its selection, and
+<code><a href="../reference/xr_chunks.html">xr_chunks()</a></code> maps that selection to chunk rows keyed
+<code>dim_0 ..</code>, as byterefs tables are.</p>
 <p>Nothing of xarray is ported or wrapped: xarray opens the data,
 selects it, and computes on it, with every engine and index it has.
 xrdbi adds the mapping to rows, and the guards.</p>

@@ -1,7 +1,8 @@
 # Querying with dplyr
 
 `tbl(con, variable)` gives a lazy table over one variable of an xarray
-Dataset. dplyr verbs on it accumulate, and nothing is read until
+Dataset, or over a grid of variables ([below](#grid-tables)). dplyr
+verbs on it accumulate, and nothing is read until
 [`collect()`](https://dplyr.tidyverse.org/reference/compute.html). The
 verbs compile to a single Python statement, the same kind you could
 write yourself for
@@ -251,6 +252,82 @@ collect(t2m)
 #> 1 1980-01-01 00:00:00       90      0                248.
 #> 2 1980-01-01 00:00:00       90      0.25             248.
 #> 3 1980-01-01 00:00:00       90      0.5              248.
+```
+
+## Grid tables
+
+A table can also be a grid: the variables that share one set of
+dimensions, with a column each, as tidync’s `hyper_tibble()` gives them.
+xarray has no grid object, so
+[`xr_grids()`](https://mdsumner.github.io/xrdbi/reference/xr_grids.md)
+finds them by grouping the variables by their dimensions. ERA5’s 273
+variables are two grids:
+
+``` r
+xr_grids(era)[, c("grid", "n", "cells", "chunkings")]
+#> # A tibble: 2 × 4
+#>   grid                              n   cells chunkings
+#>   <chr>                         <int>   <dbl>     <int>
+#> 1 time,level,latitude,longitude    11 5.08e13         1
+#> 2 time,latitude,longitude         262 1.37e12         1
+```
+
+Give [`tbl()`](https://dplyr.tidyverse.org/reference/tbl.html) a grid’s
+name, or several of its variables. On a grid table
+[`select()`](https://dplyr.tidyverse.org/reference/select.html) decides
+which members are read, so of the 262 surface variables this statement
+names three:
+
+``` r
+wind <- tbl(era, "time,latitude,longitude") |>
+  filter(time >= as.POSIXct("2020-01-01 00:00", tz = "UTC"),
+         time <= as.POSIXct("2020-01-01 05:00", tz = "UTC"),
+         latitude >= -43, latitude <= -42, longitude >= 147, longitude <= 148) |>
+  select(time, latitude, longitude, `2m_temperature`,
+         `10m_u_component_of_wind`, `10m_v_component_of_wind`)
+show_query(wind)
+#> ds[['10m_u_component_of_wind', '10m_v_component_of_wind', '2m_temperature']].sel(latitude=slice(-42, -43), longitude=slice(147, 148), time=slice('2020-01-01T00:00:00', '2020-01-01T05:00:00')) 
+#> # then in R: select(time, latitude, longitude, `2m_temperature`, `10m_u_component_of_wind`, `10m_v_component_of_wind`)
+collect(wind)
+#> # A tibble: 150 × 6
+#>    time                latitude longitude `2m_temperature`
+#>    <dttm>                 <dbl>     <dbl>            <dbl>
+#>  1 2020-01-01 00:00:00    -42        147              288.
+#>  2 2020-01-01 00:00:00    -42        147.             291.
+#>  3 2020-01-01 00:00:00    -42        148.             292.
+#>  4 2020-01-01 00:00:00    -42        148.             293.
+#>  5 2020-01-01 00:00:00    -42        148              293.
+#>  6 2020-01-01 00:00:00    -42.2      147              288.
+#>  7 2020-01-01 00:00:00    -42.2      147.             290.
+#>  8 2020-01-01 00:00:00    -42.2      148.             291.
+#>  9 2020-01-01 00:00:00    -42.2      148.             293.
+#> 10 2020-01-01 00:00:00    -42.2      148              292.
+#> # ℹ 140 more rows
+#> # ℹ 2 more variables: `10m_u_component_of_wind` <dbl>,
+#> #   `10m_v_component_of_wind` <dbl>
+```
+
+A member that a filter needs is read for the filter and dropped after
+it. The guard counts values, cells times members, and a printed grid
+table previews its first four members
+(`options(xrdbi.preview_members = )`).
+[`xr_chunks()`](https://mdsumner.github.io/xrdbi/reference/xr_chunks.md)
+maps what collecting the table reads, a row per member and chunk:
+
+``` r
+ch <- xr_chunks(wind)
+table(ch$array)
+#> 
+#> 10m_u_component_of_wind 10m_v_component_of_wind          2m_temperature 
+#>                       6                       6                       6
+```
+
+Variables on different grids are refused. A statement over both would
+repeat each surface value across the 37 pressure levels:
+
+``` r
+try(tbl(era, c("2m_temperature", "geopotential")))
+#> Error : these variables are on different grids (time,latitude,longitude; time,level,latitude,longitude); one table over both would repeat each value along the dimensions its variable lacks
 dbDisconnect(era)
 ```
 

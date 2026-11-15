@@ -260,8 +260,8 @@ block, so a value at the surface is one range request:
 ``` r
 dbGetQuery(con, "ds.salt.sel(Time='2020-01-01', st_ocean=0, yt_ocean=-45,
                              xt_ocean=147.5, method='nearest')")
-#>                  Time st_ocean yt_ocean xt_ocean     salt
-#> 1 2020-01-01 12:00:00      2.5   -45.05   147.45 35.11521
+#>                  Time xt_ocean st_ocean yt_ocean     salt
+#> 1 2020-01-01 12:00:00   147.45      2.5   -45.05 35.11521
 dbDisconnect(con)
 ```
 

@@ -19,7 +19,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">xrdbi</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.1.9034</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.1.9037</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -326,8 +326,8 @@ resets connections above about ten:</p>
 <div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbGetQuery.html" class="external-link">dbGetQuery</a></span><span class="op">(</span><span class="va">con</span>, <span class="st">"ds.salt.sel(Time='2020-01-01', st_ocean=0, yt_ocean=-45,</span></span>
 <span><span class="st">                             xt_ocean=147.5, method='nearest')"</span><span class="op">)</span></span>
-<span><span class="co">#&gt;                  Time st_ocean yt_ocean xt_ocean     salt</span></span>
-<span><span class="co">#&gt; 1 2020-01-01 12:00:00      2.5   -45.05   147.45 35.11521</span></span>
+<span><span class="co">#&gt;                  Time xt_ocean st_ocean yt_ocean     salt</span></span>
+<span><span class="co">#&gt; 1 2020-01-01 12:00:00   147.45      2.5   -45.05 35.11521</span></span>
 <span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbDisconnect.html" class="external-link">dbDisconnect</a></span><span class="op">(</span><span class="va">con</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level2">

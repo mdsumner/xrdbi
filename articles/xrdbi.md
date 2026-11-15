@@ -150,7 +150,13 @@ nrow(dbGetQuery(con, q))
 table over one variable. Filters on dimensions are pushed into xarray as
 a selection, so only those cells are read, and
 [`show_query()`](https://dplyr.tidyverse.org/reference/explain.html)
-prints the statement the verbs compile to.
+prints the statement the verbs compile to. (A table can also span a
+grid, the variables that share one set of dimensions, with a column
+each:
+[`xr_grids()`](https://mdsumner.github.io/xrdbi/reference/xr_grids.md)
+lists them. This file has one data variable, so [Querying with
+dplyr](https://mdsumner.github.io/xrdbi/articles/dplyr.html#grid-tables)
+shows them on ERA5.)
 
 ``` r
 library(dplyr, warn.conflicts = FALSE)

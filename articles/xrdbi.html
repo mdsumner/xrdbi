@@ -19,7 +19,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">xrdbi</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.1.9034</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.1.9037</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -210,7 +210,10 @@ so they count from zero, as Python’s do.</p>
 <p><code><a href="https://dplyr.tidyverse.org/reference/tbl.html" class="external-link">tbl()</a></code> gives a lazy table over one variable. Filters on
 dimensions are pushed into xarray as a selection, so only those cells
 are read, and <code><a href="https://dplyr.tidyverse.org/reference/explain.html" class="external-link">show_query()</a></code> prints the statement the verbs
-compile to.</p>
+compile to. (A table can also span a grid, the variables that share one
+set of dimensions, with a column each: <code><a href="../reference/xr_grids.html">xr_grids()</a></code> lists
+them. This file has one data variable, so <a href="https://mdsumner.github.io/xrdbi/articles/dplyr.html#grid-tables">Querying
+with dplyr</a> shows them on ERA5.)</p>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://dplyr.tidyverse.org" class="external-link">dplyr</a></span>, warn.conflicts <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
 <span><span class="va">rain</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/tbl.html" class="external-link">tbl</a></span><span class="op">(</span><span class="va">con</span>, <span class="st">"pcp"</span><span class="op">)</span> <span class="op">|&gt;</span></span>

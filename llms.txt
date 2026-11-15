@@ -12,7 +12,8 @@ a handle to it:
 - a statement is a Python expression over `ds`, and its result arrives
   as tidy rows, one per cell
 
-dplyr verbs compile to the same statements,
+dplyr verbs compile to the same statements, over one variable or a grid
+of variables that share dimensions,
 [`xr_raster()`](https://mdsumner.github.io/xrdbi/reference/xr_raster.md)
 renders a slab as a raster, and
 [`xr_chunks()`](https://mdsumner.github.io/xrdbi/reference/xr_chunks.md)
@@ -130,7 +131,7 @@ a small bundled file. Then:
 
 - Querying: [Querying with
   dplyr](https://mdsumner.github.io/xrdbi/articles/dplyr.html) (how each
-  verb compiles, and what gets read),
+  verb compiles, what gets read, and tables over grids),
   [Parameters](https://mdsumner.github.io/xrdbi/articles/parameters.html)
   (R values into statements by name), [From arrays to
   rows](https://mdsumner.github.io/xrdbi/articles/rendering.html) (the
@@ -175,7 +176,8 @@ options.
 
 ## Connect
 
-Open a connection to an xarray Dataset and look around it.
+Open a connection to an xarray Dataset and look around it, its variables
+and grids.
 
 - [`xarray()`](https://mdsumner.github.io/xrdbi/reference/xarray.md)
   [`show(`*`<XarrayDriver>`*`)`](https://mdsumner.github.io/xrdbi/reference/xarray.md)
@@ -198,6 +200,8 @@ Open a connection to an xarray Dataset and look around it.
   [`dbQuoteIdentifier(`*`<XarrayConnection>`*`,`*`<character>`*`)`](https://mdsumner.github.io/xrdbi/reference/XarrayConnection-class.md)
   [`dbQuoteString(`*`<XarrayConnection>`*`,`*`<character>`*`)`](https://mdsumner.github.io/xrdbi/reference/XarrayConnection-class.md)
   : Xarray connection
+- [`xr_grids()`](https://mdsumner.github.io/xrdbi/reference/xr_grids.md)
+  : List the grids of a Dataset
 
 ## Query
 
@@ -217,7 +221,7 @@ variables.
 - [`xr_query()`](https://mdsumner.github.io/xrdbi/reference/xr_query.md)
   : Compile a structured selection to a Python expression
 - [`tbl(`*`<XarrayConnection>`*`)`](https://mdsumner.github.io/xrdbi/reference/tbl_xarray.md)
-  : A lazy dplyr table over an xarray variable
+  : A lazy dplyr table over an xarray variable or grid
 - [`dbReadTable(`*`<XarrayConnection>`*`,`*`<character>`*`)`](https://mdsumner.github.io/xrdbi/reference/dbReadTable-XarrayConnection-character-method.md)
   : Read a variable as a tidy data frame
 

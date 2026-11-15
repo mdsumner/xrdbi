@@ -19,7 +19,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">xrdbi</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.1.9034</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.1.9037</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -199,7 +199,38 @@ million rows (<code>max_chunks</code>, or
 <code>force = TRUE</code>:</p>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/try.html" class="external-link">try</a></span><span class="op">(</span><span class="fu"><a href="../reference/xr_chunks.html">xr_chunks</a></span><span class="op">(</span><span class="va">era</span>, <span class="st">"ds['2m_temperature']"</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Error : the selection touches 1,323,648 chunks, above the guard (1,000,000); select less, raise options(xrdbi.max_chunks=), or use force = TRUE</span></span>
+<span><span class="co">#&gt; Error : the selection touches 1,323,648 chunks, above the guard (1,000,000); select less, raise options(xrdbi.max_chunks=), or use force = TRUE</span></span></code></pre></div>
+</div>
+<div class="section level2">
+<h2 id="several-variables">Several variables<a class="anchor" aria-label="anchor" href="#several-variables"></a>
+</h2>
+<p>A Dataset statement maps every data variable in it under the one
+selection, and <code>array</code> says whose chunk each row is. Here are
+two surface variables over six hours:</p>
+<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">two</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/xr_chunks.html">xr_chunks</a></span><span class="op">(</span><span class="va">era</span>, <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span></span>
+<span>  <span class="st">"ds[['2m_temperature', '10m_u_component_of_wind']]"</span>,</span>
+<span>  <span class="st">".sel(time=slice('1980-01-01T00', '1980-01-01T05'))"</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/table.html" class="external-link">table</a></span><span class="op">(</span><span class="va">two</span><span class="op">$</span><span class="va">array</span><span class="op">)</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; 10m_u_component_of_wind          2m_temperature </span></span>
+<span><span class="co">#&gt;                       6                       6</span></span>
+<span><span class="va">two</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">1</span>, <span class="fl">7</span><span class="op">)</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"array"</span>, <span class="st">"time_chunk"</span>, <span class="st">"time_min"</span>, <span class="st">"cells"</span><span class="op">)</span><span class="op">]</span></span>
+<span><span class="co">#&gt;                     array time_chunk   time_min   cells</span></span>
+<span><span class="co">#&gt; 1          2m_temperature     701256 1980-01-01 1038240</span></span>
+<span><span class="co">#&gt; 7 10m_u_component_of_wind     701256 1980-01-01 1038240</span></span></code></pre></div>
+<p>The variables need not share dimensions. A variable has missing
+values in the columns of any dimension it lacks: here that is
+<code>level</code> for the surface variable, beside
+<code>geopotential</code> on 37 pressure levels:</p>
+<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">mix</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/xr_chunks.html">xr_chunks</a></span><span class="op">(</span><span class="va">era</span>, <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span></span>
+<span>  <span class="st">"ds[['2m_temperature', 'geopotential']]"</span>,</span>
+<span>  <span class="st">".sel(time='1980-01-01T00', latitude=slice(-40, -45), longitude=slice(145, 150))"</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="va">mix</span><span class="op">[</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"array"</span>, <span class="st">"level_chunk"</span>, <span class="st">"latitude_chunk"</span>, <span class="st">"cells"</span>, <span class="st">"selected"</span><span class="op">)</span><span class="op">]</span></span>
+<span><span class="co">#&gt;            array level_chunk latitude_chunk    cells selected</span></span>
+<span><span class="co">#&gt; 1 2m_temperature          NA              0  1038240      441</span></span>
+<span><span class="co">#&gt; 2   geopotential           0              0 38414880    16317</span></span>
 <span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbDisconnect.html" class="external-link">dbDisconnect</a></span><span class="op">(</span><span class="va">era</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level2">
@@ -210,7 +241,7 @@ stored objects, the shards, so a store holds fewer, bigger files while
 reads can still fetch single chunks. <code>level = "shards"</code> maps
 the shards, and at the chunk level each chunk gets a <code>_shard</code>
 column per dimension, the shard it lives in. A small sharded store:</p>
-<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">path</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempfile</a></span><span class="op">(</span><span class="op">)</span>, <span class="st">"sharded.zarr"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/files2.html" class="external-link">dir.create</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/basename.html" class="external-link">dirname</a></span><span class="op">(</span><span class="va">path</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="fu">reticulate</span><span class="fu">::</span><span class="fu"><a href="https://rstudio.github.io/reticulate/reference/py_run.html" class="external-link">py_run_string</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"</span></span>
@@ -235,7 +266,7 @@ column per dimension, the shard it lives in. A small sharded store:</p>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; 0 0 0 1 1 0 1 1 </span></span>
 <span><span class="co">#&gt;  48  48  48  48</span></span></code></pre></div>
-<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">win</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/xr_chunks.html">xr_chunks</a></span><span class="op">(</span><span class="va">z</span>, <span class="st">"ds.v.isel(time=1, y=slice(50, 70), x=slice(90, 110))"</span><span class="op">)</span></span>
 <span><span class="va">win</span><span class="op">[</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"y_chunk"</span>, <span class="st">"x_chunk"</span>, <span class="st">"y_shard"</span>, <span class="st">"x_shard"</span>, <span class="st">"selected"</span><span class="op">)</span><span class="op">]</span></span>
 <span><span class="co">#&gt;   y_chunk x_chunk y_shard x_shard selected</span></span>
@@ -250,10 +281,38 @@ column per dimension, the shard it lives in. A small sharded store:</p>
 <span>     border <span class="op">=</span> <span class="st">"firebrick"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/rect.html" class="external-link">rect</a></span><span class="op">(</span><span class="fl">90</span>, <span class="fl">50</span>, <span class="fl">110</span>, <span class="fl">70</span>, lty <span class="op">=</span> <span class="fl">2</span><span class="op">)</span>   <span class="co"># the window itself</span></span></code></pre></div>
 <p><img src="chunk-maps_files/figure-html/shards-1.png" class="r-plt" alt="One time step of a sharded array: 48 chunks in 4 shards, and a small window crossing the corner where four chunks and four shards meet" width="576"></p>
-<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbDisconnect.html" class="external-link">dbDisconnect</a></span><span class="op">(</span><span class="va">z</span><span class="op">)</span></span></code></pre></div>
 <p>The window (dashed) is 20 by 20 cells, but it crosses a corner, so it
 touches four chunks (shaded) in four shards (heavy lines).</p>
+</div>
+<div class="section level2">
+<h2 id="keys-for-byte-references">Keys for byte references<a class="anchor" aria-label="anchor" href="#keys-for-byte-references"></a>
+</h2>
+<p>A map of storage chunks starts with the chunk key of a <a href="https://github.com/byterefs/spec" class="external-link">byterefs</a> table:
+<code>array</code>, and <code>dim_0</code>, <code>dim_1</code>, …, the
+chunk’s 0-based position along each stored dimension, in the variable’s
+dimension order. That is the same as the <code>_chunk</code> columns,
+under the names other readers use:</p>
+<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">chunks</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">3</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"array"</span>, <span class="st">"dim_0"</span>, <span class="st">"dim_1"</span>, <span class="st">"dim_2"</span>, <span class="st">"time_chunk"</span>, <span class="st">"y_chunk"</span>,</span>
+<span>              <span class="st">"x_chunk"</span><span class="op">)</span><span class="op">]</span></span>
+<span><span class="co">#&gt;   array dim_0 dim_1 dim_2 time_chunk y_chunk x_chunk</span></span>
+<span><span class="co">#&gt; 1     v     0     0     0          0       0       0</span></span>
+<span><span class="co">#&gt; 2     v     0     0     1          0       0       1</span></span>
+<span><span class="co">#&gt; 3     v     0     0     2          0       0       2</span></span></code></pre></div>
+<p>byterefs views (<code>refs_&lt;array&gt;</code>) and zaro’s plans
+(<code>zaro_plan()</code>) are keyed the same way, one array at a time.
+<code><a href="../reference/xr_chunks.html">xr_chunks()</a></code> reads no bytes, so for each chunk’s presence,
+path and byte range, join its map to one of those on the keys. In a
+sharded array the keys index the inner chunks, as byterefs rows do, so a
+shard map has no keys. With <a href="https://github.com/hypertidy/zaro" class="external-link">zaro</a>, each chunk’s shard
+object and its byte range within it come from the shard index:</p>
+<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">keys</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"dim_0"</span>, <span class="st">"dim_1"</span>, <span class="st">"dim_2"</span><span class="op">)</span></span>
+<span><span class="va">p</span> <span class="op">&lt;-</span> <span class="fu">zaro</span><span class="fu">::</span><span class="fu">zaro_plan</span><span class="op">(</span><span class="fu">zaro</span><span class="fu">::</span><span class="fu">zaro</span><span class="op">(</span><span class="va">path</span><span class="op">)</span>, <span class="st">"v"</span>, chunks <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">as.matrix</a></span><span class="op">(</span><span class="va">chunks</span><span class="op">[</span><span class="va">keys</span><span class="op">]</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/merge.html" class="external-link">merge</a></span><span class="op">(</span><span class="va">chunks</span>, <span class="fu"><a href="https://rdrr.io/r/base/as.data.frame.html" class="external-link">as.data.frame</a></span><span class="op">(</span><span class="va">p</span><span class="op">)</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="va">keys</span>, <span class="st">"present"</span>, <span class="st">"path"</span>, <span class="st">"offset"</span>, <span class="st">"size"</span><span class="op">)</span><span class="op">]</span>,</span>
+<span>      by <span class="op">=</span> <span class="va">keys</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="where-chunk-shapes-come-from">Where chunk shapes come from<a class="anchor" aria-label="anchor" href="#where-chunk-shapes-come-from"></a>
@@ -278,9 +337,12 @@ records no storage layout</li>
 chunk</li>
 </ul>
 <p>The selection is placed on the stored grid by its coordinate values,
-so it must be an orthogonal selection of one stored variable, by
+so it must be an orthogonal selection of stored variables, by
 <code>sel()</code>/<code>isel()</code> with labels, slices or lists. A
-pointwise selection onto a new dimension cannot be placed.</p>
+pointwise selection onto a new dimension cannot be placed. Shards, dask
+chunks and whole variables are not storage chunks, so their maps have no
+<code>dim_0 ..</code> keys; for a Dataset whose variables differ,
+<code>chunking</code> has one value per variable.</p>
 <p>On a curvilinear grid, each chunk also gets the envelope of its block
 of 2-D longitude and latitude: the <a href="curvilinear.html">curvilinear grids</a> article shows one.</p>
 </div>

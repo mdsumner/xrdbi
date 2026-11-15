@@ -8,7 +8,8 @@
 
 ## Connect
 
-Open a connection to an xarray Dataset and look around it.
+Open a connection to an xarray Dataset and look around it, its variables
+and grids.
 
 - [`xarray()`](https://mdsumner.github.io/xrdbi/reference/xarray.md)
   [`show(`*`<XarrayDriver>`*`)`](https://mdsumner.github.io/xrdbi/reference/xarray.md)
@@ -31,6 +32,8 @@ Open a connection to an xarray Dataset and look around it.
   [`dbQuoteIdentifier(`*`<XarrayConnection>`*`,`*`<character>`*`)`](https://mdsumner.github.io/xrdbi/reference/XarrayConnection-class.md)
   [`dbQuoteString(`*`<XarrayConnection>`*`,`*`<character>`*`)`](https://mdsumner.github.io/xrdbi/reference/XarrayConnection-class.md)
   : Xarray connection
+- [`xr_grids()`](https://mdsumner.github.io/xrdbi/reference/xr_grids.md)
+  : List the grids of a Dataset
 
 ## Query
 
@@ -50,7 +53,7 @@ variables.
 - [`xr_query()`](https://mdsumner.github.io/xrdbi/reference/xr_query.md)
   : Compile a structured selection to a Python expression
 - [`tbl(`*`<XarrayConnection>`*`)`](https://mdsumner.github.io/xrdbi/reference/tbl_xarray.md)
-  : A lazy dplyr table over an xarray variable
+  : A lazy dplyr table over an xarray variable or grid
 - [`dbReadTable(`*`<XarrayConnection>`*`,`*`<character>`*`)`](https://mdsumner.github.io/xrdbi/reference/dbReadTable-XarrayConnection-character-method.md)
   : Read a variable as a tidy data frame
 

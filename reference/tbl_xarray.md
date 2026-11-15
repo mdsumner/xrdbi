@@ -1,7 +1,7 @@
-# A lazy dplyr table over an xarray variable
+# A lazy dplyr table over an xarray variable or grid
 
-`tbl(con, from)` returns a lazy table over one variable: dplyr verbs
-accumulate, and no data are read until
+`tbl(con, from)` returns a lazy table over one variable, or over a grid
+of variables: dplyr verbs accumulate, and no data are read until
 [`dplyr::collect()`](https://dplyr.tidyverse.org/reference/compute.html)
 (or a print, which shows a small preview). The verbs compile to a single
 Python statement, shown by
@@ -26,7 +26,10 @@ tbl(src, from, ...)
 
 - from:
 
-  a variable name (a data variable, or a coordinate)
+  a variable name (a data variable, or a coordinate); several data
+  variables on one grid; or the name of a grid, as
+  [`xr_grids()`](https://mdsumner.github.io/xrdbi/reference/xr_grids.md)
+  lists it (either view)
 
 - ...:
 
@@ -39,6 +42,32 @@ a lazy `tbl_xarray`;
 returns a tibble
 
 ## Details
+
+A grid is the set of variables on one set of dimensions (see
+[`xr_grids()`](https://mdsumner.github.io/xrdbi/reference/xr_grids.md)),
+and a grid table has a column per member, as tidync's `hyper_tibble()`
+does: `tbl(con, c("sst", "ice"))` for some members, or
+`tbl(con, "time,zlev,lat,lon")` for a grid by its name. It compiles to a
+Dataset statement, `ds[['sst', 'ice']]`, and the verbs apply as they do
+to one variable, with these differences:
+
+- [`select()`](https://dplyr.tidyverse.org/reference/select.html)
+  decides which members are read: the statement names the selected
+  members, plus any a filter needs (which are dropped after it). It must
+  name at least one member.
+
+- the guard counts values, cells times members.
+
+- printing previews at most `getOption("xrdbi.preview_members", 4)`
+  members, since each is at least a chunk read.
+
+- variables on different grids are refused, because a statement over
+  both would repeat each value along the dimensions its variable lacks
+  (a surface field across 37 pressure levels).
+
+[`xr_chunks()`](https://mdsumner.github.io/xrdbi/reference/xr_chunks.md)
+takes a lazy table too, and maps what collecting it would read: for a
+grid table, a row per member read and chunk.
 
 Supported verbs:
 [`filter()`](https://dplyr.tidyverse.org/reference/filter.html),
@@ -104,7 +133,8 @@ after (the "residual"):
 [XarrayResult](https://mdsumner.github.io/xrdbi/reference/XarrayResult-class.md)
 for statements written in Python (and values passed with `params`);
 [`xr_query()`](https://mdsumner.github.io/xrdbi/reference/xr_query.md);
-the guard and preview options in
+[`xr_grids()`](https://mdsumner.github.io/xrdbi/reference/xr_grids.md)
+for the grids; the guard and preview options in
 [xrdbi-package](https://mdsumner.github.io/xrdbi/reference/xrdbi-package.md).
 
 ## Examples
@@ -126,5 +156,18 @@ collect(u)
 tbl(con, "2m_temperature") |>
   filter(time >= as.POSIXct("1980-01-01", tz = "UTC")) |>
   head(3) |> collect()
+
+## the surface grid: 262 members, of which select() reads three
+xr_grids(con)
+wind <- tbl(con, "time,latitude,longitude") |>
+  filter(time >= as.POSIXct("2020-01-01 00:00", tz = "UTC"),
+         time <= as.POSIXct("2020-01-01 05:00", tz = "UTC"),
+         latitude >= -43, latitude <= -42,
+         longitude >= 147, longitude <= 148) |>
+  select(time, latitude, longitude, `2m_temperature`,
+         `10m_u_component_of_wind`, `10m_v_component_of_wind`)
+show_query(wind)
+collect(wind)
+xr_chunks(wind)   # 18 chunks: 6 hours, 3 members
 } # }
 ```

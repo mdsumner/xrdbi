@@ -77,7 +77,10 @@ A connection holds one xarray Dataset, open in the Python session.
   [`collect()`](https://dplyr.tidyverse.org/reference/compute.html),
   compiled to a statement that
   [`dplyr::show_query()`](https://dplyr.tidyverse.org/reference/explain.html)
-  prints.
+  prints. A table is one variable, or a grid of them (the variables on
+  one set of dimensions, a column each), which
+  [`xr_grids()`](https://mdsumner.github.io/xrdbi/reference/xr_grids.md)
+  lists.
 
 - **Read a whole variable**:
   [dbReadTable()](https://mdsumner.github.io/xrdbi/reference/dbReadTable-XarrayConnection-character-method.md).
@@ -126,6 +129,10 @@ also takes the threshold as an argument; the options set the defaults.
   [tbl_xarray](https://mdsumner.github.io/xrdbi/reference/tbl_xarray.md)'s
   compiled statement without the preview's data read (compiling still
   reads coordinates).
+
+- `xrdbi.preview_members` (default `4`): the most members of a grid
+  [tbl_xarray](https://mdsumner.github.io/xrdbi/reference/tbl_xarray.md)
+  a print previews, each at most a chunk read.
 
 ## R packages used when installed
 

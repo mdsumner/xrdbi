@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">xrdbi</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.1.9034</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.1.9037</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -104,7 +104,9 @@ rebind with <code><a href="https://dbi.r-dbi.org/reference/dbBind.html" class="e
 statement from a structured selection.</p></li>
 <li><p><strong>Query with dplyr</strong>: <a href="tbl_xarray.html">tbl()</a> gives a lazy table for
 <code><a href="https://dplyr.tidyverse.org/reference/filter.html" class="external-link">filter()</a></code>, <code><a href="https://dplyr.tidyverse.org/reference/select.html" class="external-link">select()</a></code>, <code><a href="https://rdrr.io/r/utils/head.html" class="external-link">head()</a></code> and <code><a href="https://dplyr.tidyverse.org/reference/compute.html" class="external-link">collect()</a></code>, compiled to a
-statement that <code><a href="https://dplyr.tidyverse.org/reference/explain.html" class="external-link">dplyr::show_query()</a></code> prints.</p></li>
+statement that <code><a href="https://dplyr.tidyverse.org/reference/explain.html" class="external-link">dplyr::show_query()</a></code> prints. A table is one
+variable, or a grid of them (the variables on one set of
+dimensions, a column each), which <code><a href="xr_grids.html">xr_grids()</a></code> lists.</p></li>
 <li><p><strong>Read a whole variable</strong>: <a href="dbReadTable-XarrayConnection-character-method.html">dbReadTable()</a>.</p></li>
 <li><p><strong>Render other ways</strong>: <code><a href="xr_raster.html">xr_raster()</a></code> gives a 2-D or 3-D slab in
 gdalraster's in-memory raster form; <code><a href="xr_chunks.html">xr_chunks()</a></code> maps the storage
@@ -131,6 +133,8 @@ previews, reading at most one chunk.</p></li>
 <li><p><code>xrdbi.print_preview</code> (default <code>TRUE</code>): <code>FALSE</code> prints a
 <a href="tbl_xarray.html">tbl_xarray</a>'s compiled statement without the preview's data read
 (compiling still reads coordinates).</p></li>
+<li><p><code>xrdbi.preview_members</code> (default <code>4</code>): the most members of a grid
+<a href="tbl_xarray.html">tbl_xarray</a> a print previews, each at most a chunk read.</p></li>
 </ul></div>
     <div class="section level2">
     <h2 id="r-packages-used-when-installed">R packages used when installed<a class="anchor" aria-label="anchor" href="#r-packages-used-when-installed"></a></h2>

@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">xrdbi</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.1.9034</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.1.9037</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -71,7 +71,7 @@
       </dl></div><div class="section level2">
       <h2 id="connect">Connect<a class="anchor" aria-label="anchor" href="#connect"></a></h2>
 
-      <div class="section-desc"><p>Open a connection to an xarray Dataset and look around it.</p></div>
+      <div class="section-desc"><p>Open a connection to an xarray Dataset and look around it, its variables and grids.</p></div>
 
       <dl></dl></div><div class="section level2">
 
@@ -98,6 +98,13 @@
 
         </dt>
         <dd>Xarray connection</dd>
+
+        <dt>
+
+          <code><a href="xr_grids.html">xr_grids()</a></code>
+
+        </dt>
+        <dd>List the grids of a Dataset</dd>
       </dl></div><div class="section level2">
       <h2 id="query">Query<a class="anchor" aria-label="anchor" href="#query"></a></h2>
 
@@ -127,7 +134,7 @@
           <code><a href="tbl_xarray.html">tbl(<i>&lt;XarrayConnection&gt;</i>)</a></code>
 
         </dt>
-        <dd>A lazy dplyr table over an xarray variable</dd>
+        <dd>A lazy dplyr table over an xarray variable or grid</dd>
 
         <dt>
 

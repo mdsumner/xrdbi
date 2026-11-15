@@ -19,7 +19,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">xrdbi</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.1.9034</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.1.9037</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -82,9 +82,9 @@
     
     
 <p><code>tbl(con, variable)</code> gives a lazy table over one variable
-of an xarray Dataset. dplyr verbs on it accumulate, and nothing is read
-until <code><a href="https://dplyr.tidyverse.org/reference/compute.html" class="external-link">collect()</a></code>. The verbs compile to a single Python
-statement, the same kind you could write yourself for
+of an xarray Dataset, or over a grid of variables (<a href="#grid-tables">below</a>). dplyr verbs on it accumulate, and
+nothing is read until <code><a href="https://dplyr.tidyverse.org/reference/compute.html" class="external-link">collect()</a></code>. The verbs compile to a
+single Python statement, the same kind you could write yourself for
 <code><a href="https://dbi.r-dbi.org/reference/dbGetQuery.html" class="external-link">dbGetQuery()</a></code>, and <code><a href="https://dplyr.tidyverse.org/reference/explain.html" class="external-link">show_query()</a></code> prints it. This
 article shows how each verb compiles, and so what gets read.</p>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
@@ -298,7 +298,70 @@ reading:</p>
 <span><span class="co">#&gt;   <span style="color: #949494; font-style: italic;">&lt;dttm&gt;</span>                 <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>     <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>            <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span></span></span>
 <span><span class="co">#&gt; <span style="color: #BCBCBC;">1</span> 1980-01-01 <span style="color: #949494;">00:00:00</span>       90      0                248.</span></span>
 <span><span class="co">#&gt; <span style="color: #BCBCBC;">2</span> 1980-01-01 <span style="color: #949494;">00:00:00</span>       90      0.25             248.</span></span>
-<span><span class="co">#&gt; <span style="color: #BCBCBC;">3</span> 1980-01-01 <span style="color: #949494;">00:00:00</span>       90      0.5              248.</span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;">3</span> 1980-01-01 <span style="color: #949494;">00:00:00</span>       90      0.5              248.</span></span></code></pre></div>
+</div>
+<div class="section level2">
+<h2 id="grid-tables">Grid tables<a class="anchor" aria-label="anchor" href="#grid-tables"></a>
+</h2>
+<p>A table can also be a grid: the variables that share one set of
+dimensions, with a column each, as tidync’s <code>hyper_tibble()</code>
+gives them. xarray has no grid object, so <code><a href="../reference/xr_grids.html">xr_grids()</a></code> finds
+them by grouping the variables by their dimensions. ERA5’s 273 variables
+are two grids:</p>
+<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="../reference/xr_grids.html">xr_grids</a></span><span class="op">(</span><span class="va">era</span><span class="op">)</span><span class="op">[</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"grid"</span>, <span class="st">"n"</span>, <span class="st">"cells"</span>, <span class="st">"chunkings"</span><span class="op">)</span><span class="op">]</span></span>
+<span><span class="co">#&gt; <span style="color: #949494;"># A tibble: 2 × 4</span></span></span>
+<span><span class="co">#&gt;   grid                              n   cells chunkings</span></span>
+<span><span class="co">#&gt;   <span style="color: #949494; font-style: italic;">&lt;chr&gt;</span>                         <span style="color: #949494; font-style: italic;">&lt;int&gt;</span>   <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>     <span style="color: #949494; font-style: italic;">&lt;int&gt;</span></span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;">1</span> time,level,latitude,longitude    11 5.08<span style="color: #949494;">e</span>13         1</span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;">2</span> time,latitude,longitude         262 1.37<span style="color: #949494;">e</span>12         1</span></span></code></pre></div>
+<p>Give <code><a href="https://dplyr.tidyverse.org/reference/tbl.html" class="external-link">tbl()</a></code> a grid’s name, or several of its variables.
+On a grid table <code><a href="https://dplyr.tidyverse.org/reference/select.html" class="external-link">select()</a></code> decides which members are read, so
+of the 262 surface variables this statement names three:</p>
+<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">wind</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/tbl.html" class="external-link">tbl</a></span><span class="op">(</span><span class="va">era</span>, <span class="st">"time,latitude,longitude"</span><span class="op">)</span> <span class="op">|&gt;</span></span>
+<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/filter.html" class="external-link">filter</a></span><span class="op">(</span><span class="va">time</span> <span class="op">&gt;=</span> <span class="fu"><a href="https://rdrr.io/r/base/as.POSIXlt.html" class="external-link">as.POSIXct</a></span><span class="op">(</span><span class="st">"2020-01-01 00:00"</span>, tz <span class="op">=</span> <span class="st">"UTC"</span><span class="op">)</span>,</span>
+<span>         <span class="va">time</span> <span class="op">&lt;=</span> <span class="fu"><a href="https://rdrr.io/r/base/as.POSIXlt.html" class="external-link">as.POSIXct</a></span><span class="op">(</span><span class="st">"2020-01-01 05:00"</span>, tz <span class="op">=</span> <span class="st">"UTC"</span><span class="op">)</span>,</span>
+<span>         <span class="va">latitude</span> <span class="op">&gt;=</span> <span class="op">-</span><span class="fl">43</span>, <span class="va">latitude</span> <span class="op">&lt;=</span> <span class="op">-</span><span class="fl">42</span>, <span class="va">longitude</span> <span class="op">&gt;=</span> <span class="fl">147</span>, <span class="va">longitude</span> <span class="op">&lt;=</span> <span class="fl">148</span><span class="op">)</span> <span class="op">|&gt;</span></span>
+<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/select.html" class="external-link">select</a></span><span class="op">(</span><span class="va">time</span>, <span class="va">latitude</span>, <span class="va">longitude</span>, <span class="va">`2m_temperature`</span>,</span>
+<span>         <span class="va">`10m_u_component_of_wind`</span>, <span class="va">`10m_v_component_of_wind`</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://dplyr.tidyverse.org/reference/explain.html" class="external-link">show_query</a></span><span class="op">(</span><span class="va">wind</span><span class="op">)</span></span>
+<span><span class="co">#&gt; ds[['10m_u_component_of_wind', '10m_v_component_of_wind', '2m_temperature']].sel(latitude=slice(-42, -43), longitude=slice(147, 148), time=slice('2020-01-01T00:00:00', '2020-01-01T05:00:00')) </span></span>
+<span><span class="co">#&gt; # then in R: select(time, latitude, longitude, `2m_temperature`, `10m_u_component_of_wind`, `10m_v_component_of_wind`)</span></span>
+<span><span class="fu"><a href="https://dplyr.tidyverse.org/reference/compute.html" class="external-link">collect</a></span><span class="op">(</span><span class="va">wind</span><span class="op">)</span></span>
+<span><span class="co">#&gt; <span style="color: #949494;"># A tibble: 150 × 6</span></span></span>
+<span><span class="co">#&gt;    time                latitude longitude `2m_temperature`</span></span>
+<span><span class="co">#&gt;    <span style="color: #949494; font-style: italic;">&lt;dttm&gt;</span>                 <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>     <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>            <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span></span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;"> 1</span> 2020-01-01 <span style="color: #949494;">00:00:00</span>    -<span style="color: #BB0000;">42</span>        147              288.</span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;"> 2</span> 2020-01-01 <span style="color: #949494;">00:00:00</span>    -<span style="color: #BB0000;">42</span>        147.             291.</span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;"> 3</span> 2020-01-01 <span style="color: #949494;">00:00:00</span>    -<span style="color: #BB0000;">42</span>        148.             292.</span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;"> 4</span> 2020-01-01 <span style="color: #949494;">00:00:00</span>    -<span style="color: #BB0000;">42</span>        148.             293.</span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;"> 5</span> 2020-01-01 <span style="color: #949494;">00:00:00</span>    -<span style="color: #BB0000;">42</span>        148              293.</span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;"> 6</span> 2020-01-01 <span style="color: #949494;">00:00:00</span>    -<span style="color: #BB0000;">42.2</span>      147              288.</span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;"> 7</span> 2020-01-01 <span style="color: #949494;">00:00:00</span>    -<span style="color: #BB0000;">42.2</span>      147.             290.</span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;"> 8</span> 2020-01-01 <span style="color: #949494;">00:00:00</span>    -<span style="color: #BB0000;">42.2</span>      148.             291.</span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;"> 9</span> 2020-01-01 <span style="color: #949494;">00:00:00</span>    -<span style="color: #BB0000;">42.2</span>      148.             293.</span></span>
+<span><span class="co">#&gt; <span style="color: #BCBCBC;">10</span> 2020-01-01 <span style="color: #949494;">00:00:00</span>    -<span style="color: #BB0000;">42.2</span>      148              292.</span></span>
+<span><span class="co">#&gt; <span style="color: #949494;"># ℹ 140 more rows</span></span></span>
+<span><span class="co">#&gt; <span style="color: #949494;"># ℹ 2 more variables: `10m_u_component_of_wind` &lt;dbl&gt;,</span></span></span>
+<span><span class="co">#&gt; <span style="color: #949494;">#   `10m_v_component_of_wind` &lt;dbl&gt;</span></span></span></code></pre></div>
+<p>A member that a filter needs is read for the filter and dropped after
+it. The guard counts values, cells times members, and a printed grid
+table previews its first four members
+(<code>options(xrdbi.preview_members = )</code>).
+<code><a href="../reference/xr_chunks.html">xr_chunks()</a></code> maps what collecting the table reads, a row per
+member and chunk:</p>
+<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">ch</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/xr_chunks.html">xr_chunks</a></span><span class="op">(</span><span class="va">wind</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/table.html" class="external-link">table</a></span><span class="op">(</span><span class="va">ch</span><span class="op">$</span><span class="va">array</span><span class="op">)</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; 10m_u_component_of_wind 10m_v_component_of_wind          2m_temperature </span></span>
+<span><span class="co">#&gt;                       6                       6                       6</span></span></code></pre></div>
+<p>Variables on different grids are refused. A statement over both would
+repeat each surface value across the 37 pressure levels:</p>
+<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/try.html" class="external-link">try</a></span><span class="op">(</span><span class="fu"><a href="https://dplyr.tidyverse.org/reference/tbl.html" class="external-link">tbl</a></span><span class="op">(</span><span class="va">era</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"2m_temperature"</span>, <span class="st">"geopotential"</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Error : these variables are on different grids (time,latitude,longitude; time,level,latitude,longitude); one table over both would repeat each value along the dimensions its variable lacks</span></span>
 <span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbDisconnect.html" class="external-link">dbDisconnect</a></span><span class="op">(</span><span class="va">era</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level2">
@@ -309,7 +372,7 @@ selects, and its first rows, reading at most one chunk.
 <code>options(xrdbi.print_n = )</code> sets the number of rows, and
 <code>options(xrdbi.print_preview = FALSE)</code> turns the preview
 off.</p>
-<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">sst</span> <span class="op">|&gt;</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/filter.html" class="external-link">filter</a></span><span class="op">(</span><span class="va">lat</span> <span class="op">&lt;=</span> <span class="op">-</span><span class="fl">45</span><span class="op">)</span></span>
 <span><span class="co">#&gt; &lt;tbl_xarray&gt; sst</span></span>
 <span><span class="co">#&gt;   python: ds['sst'].sel(lat=slice(-45, None))</span></span>
@@ -333,7 +396,7 @@ reading it, and errors above <code>max_cells</code> cells (10 million by
 default, or <code>getOption("xrdbi.max_cells")</code>). Pass
 <code>force = TRUE</code> to read anyway, or filter more dimensions.
 Here the limit is set low to show it:</p>
-<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/try.html" class="external-link">try</a></span><span class="op">(</span><span class="fu"><a href="https://dplyr.tidyverse.org/reference/compute.html" class="external-link">collect</a></span><span class="op">(</span><span class="va">sst</span>, max_cells <span class="op">=</span> <span class="fl">500</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Error : collect would materialize 1,000 cells, over the guard (500); constrain more dimensions (e.g. a time range), raise options(xrdbi.max_cells=), or collect(force = TRUE)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="fu"><a href="https://dplyr.tidyverse.org/reference/compute.html" class="external-link">collect</a></span><span class="op">(</span><span class="va">sst</span>, max_cells <span class="op">=</span> <span class="fl">500</span>, force <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span><span class="op">)</span></span>
