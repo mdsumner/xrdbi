@@ -119,6 +119,38 @@ test_that("guard and kind errors", {
                "stack\\(band=")
 })
 
+test_that("descending x and ascending y flip together; integers stay integer", {
+  skip_if_no_xarray()
+  ## value = band * 100 + row * 10 + col, indexed as stored: (y up, x west)
+  con <- DBI::dbConnect(xarray(), builder = function(xr) {
+    reticulate::py_run_string(paste(
+      "import xarray as _xr, numpy as _np",
+      "_b, _r, _c = _np.meshgrid(_np.arange(2), _np.arange(3), _np.arange(4), indexing='ij')",
+      "_fx = _xr.Dataset({'v': (('band', 'y', 'x'), (_b*100 + _r*10 + _c).astype('int16'))},",
+      "  coords={'band': [1, 2], 'y': [10., 20., 30.], 'x': [4., 3., 2., 1.]})",
+      sep = "\n"), convert = FALSE)
+    reticulate::py_eval("_fx", convert = FALSE)
+  })
+  on.exit(DBI::dbDisconnect(con))
+
+  r <- xr_raster(con, "ds.v")
+  g <- attr(r, "gis")
+  expect_equal(g$dim, c(4, 3, 2))
+  expect_equal(g$bbox, c(0.5, 5, 4.5, 35))
+  expect_equal(g$datatype, rep("Int16", 2))
+  expect_type(r, "integer")
+  ## top-left pixel: last stored row (y = 30), last stored column (x = 1)
+  expect_null(dim(r))
+  want <- unlist(lapply(0:1, function(b) {
+    as.vector(t(outer(2:0, 3:0, function(i, j) b * 100L + i * 10L + j)))
+  }))
+  expect_identical(as.vector(r), want)
+
+  rl <- xr_raster(con, "ds.v", as_list = TRUE)
+  expect_identical(rl[[1]], want[1:12])
+  expect_identical(rl[[2]], want[13:24])
+})
+
 test_that("squeeze admits singleton dims", {
   skip_if_no_xarray()
   con <- make_pattern_con()

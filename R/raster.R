@@ -170,11 +170,10 @@ xr_raster <- function(x, statement = NULL, as_list = FALSE,
   xstep <- step_of(xv, xdim, ceps(xdim))
 
   guard_cells(obj, max_cells, force)
-  vals <- py_to_r(obj$values)
 
-  nbands <- if (ndim == 3L) dim(vals)[1L] else 1L
   ysize <- length(yv)
   xsize <- length(xv)
+  nbands <- if (ndim == 3L) py_to_r(bt$int(py_get_item(obj$sizes, dims[1L]))) else 1L
 
   dtype <- switch(py_to_r(obj$dtype$name),
     float32 = "Float32", float64 = "Float64",
@@ -188,22 +187,20 @@ xr_raster <- function(x, statement = NULL, as_list = FALSE,
             max(xv) + xres / 2, max(yv) + yres / 2)
 
 
-  ## into GDAL's top-left, left-to-right, top-to-bottom pixel order
-  orient <- function(m) {
-    if (ystep > 0) m <- m[nrow(m):1L, , drop = FALSE]
-    if (xstep < 0) m <- m[, ncol(m):1L, drop = FALSE]
-    as.vector(t(m))
-  }
-  band_vec <- function(b) {
-    m <- if (ndim == 3L) vals[b, , , drop = TRUE] else vals
-    dim(m) <- c(ysize, xsize)
-    orient(m)
-  }
+  ## GDAL's pixel order (band-sequential, top-to-bottom, left-to-right)
+  ## is numpy's C order on (band, y, x) once rows run north to south and
+  ## columns west to east: flip in numpy and hand over one flat buffer.
+  ## Converting the N-D array instead makes reticulate reorder it to
+  ## column-major and R transpose it back, ~7x slower
+  arr <- np$asarray(obj$values)
+  if (ystep > 0) arr <- np$flip(arr, ndim - 2L)
+  if (xstep < 0) arr <- np$flip(arr, ndim - 1L)
+  out <- py_to_r(np$ravel(arr, order = "C"))
+  dim(out) <- NULL
 
-  out <- if (isTRUE(as_list)) {
-    lapply(seq_len(nbands), band_vec)
-  } else {
-    unlist(lapply(seq_len(nbands), band_vec), use.names = FALSE)
+  if (isTRUE(as_list)) {
+    npix <- ysize * xsize
+    out <- lapply(seq_len(nbands), function(b) out[(b - 1) * npix + seq_len(npix)])
   }
 
   wkt <- lift_srs(obj, coords, conn_ds(con))
