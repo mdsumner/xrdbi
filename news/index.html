@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">xrdbi</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.1.9037</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.0.1.9038</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -55,6 +55,11 @@
 
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="development version" id="xrdbi-development-version">xrdbi (development version)<a class="anchor" aria-label="anchor" href="#xrdbi-development-version"></a></h2>
+<div class="section level3">
+<h3 id="faster-xr_raster-development-version">Faster xr_raster()<a class="anchor" aria-label="anchor" href="#faster-xr_raster-development-version"></a></h3>
+<ul><li>
+<code><a href="../reference/xr_raster.html">xr_raster()</a></code> flips rows and columns into GDAL pixel order in numpy and hands R one flat buffer, instead of converting the N-D array (which reticulate reorders to column-major) and transposing each band back in R. A 4-band 4320 x 8640 float32 stack renders in ~1.2 s, down from ~8.2 s, with identical output.</li>
+</ul></div>
 <div class="section level3">
 <h3 id="documentation-development-version">Documentation<a class="anchor" aria-label="anchor" href="#documentation-development-version"></a></h3>
 <ul><li><p>Reference pages corrected in a documentation sweep: examples now use the vendored fixtures (<code>trmm.nc</code>, <code>rgbsmall.tif</code>) so they run as pasted, and no longer select an exact date that misses 12:00 times, use xvec without importing it, pass <code>chunks = list()</code> (a Python list) or open zarr on the dask path. Statements that compute (e.g. <code>.mean()</code>) are documented as running at <code><a href="https://dbi.r-dbi.org/reference/dbSendQuery.html" class="external-link">dbSendQuery()</a></code>, before the guard, which sizes only the result. <code><a href="../reference/tbl_xarray.html">?tbl_xarray</a></code> lists the supported verbs and filter forms, the guard and <code>force</code>, and the preview options; <code><a href="../reference/xr_raster.html">?xr_raster</a></code> says y and x are the last two dimensions and how <code>srs</code> is found; <code><a href="../reference/xr_query.html">?xr_query</a></code> says character vectors are labels, not ranges.</p></li>
